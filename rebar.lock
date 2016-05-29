@@ -1,0 +1,5 @@
+[{<<"pgsql">>,
+  {git,"https://github.com/semiocast/pgsql.git",
+       {ref,"14f632bc89e464d82ce3ef12a67ed8c2adb5b60c"}},
+  0},
+ {<<"sbroker">>,{pkg,<<"sbroker">>,<<"0.7.0">>},0}].
