@@ -1,8 +1,8 @@
 {application, pgsql_pool,
- [{description, "An OTP application"},
+ [{description, "Postgres connection pool backed by sbroker"},
   {vsn, "0.1.0"},
   {registered, []},
-  {mod, { pgsql_pool_app, []}},
+  {mod, {pgsql_pool_app, []}},
   {applications,
    [kernel,
     stdlib,
@@ -12,7 +12,7 @@
   {env,[]},
   {modules, []},
 
-  {maintainers, []},
-  {licenses, []},
-  {links, []}
+  {maintainers, ["Tristan Sloughter"]},
+  {licenses, ["BSD"]},
+  {links, [{"Github", "https://github.com/tsloughter/pgsql_pool"}]}
  ]}.
