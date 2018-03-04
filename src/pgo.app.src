@@ -1,0 +1,19 @@
+{application, pgo,
+ [{description, "Postgres client with connection pool backed by sbroker"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {pgo_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    backoff,
+    sbroker,
+    pgsql
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {maintainers, ["Tristan Sloughter"]},
+  {licenses, ["Apache 2"]},
+  {links, [{"Github", "https://github.com/tsloughter/pgo"}]}
+ ]}.

@@ -1,13 +1,11 @@
 %%%-------------------------------------------------------------------
-%% @doc pgsql_pool public API
+%% @doc pgo application
 %% @end
 %%%-------------------------------------------------------------------
-
--module(pgsql_pool_app).
+-module(pgo_app).
 
 -behaviour(application).
 
-%% Application callbacks
 -export([start/2, stop/1]).
 
 %%====================================================================
@@ -15,8 +13,10 @@
 %%====================================================================
 
 start(_StartType, _StartArgs) ->
-    Pools = application:get_env(pgsql_pool, pools, []),
-    pgsql_pool_sup:start_link(Pools).
+    Pools = application:get_env(pgo, pools, []),
+    {ok, Pid} = pgo_sup:start_link(),
+    [pgo_sup:start_child(Name, PoolConfig) || {Name, PoolConfig} <- Pools],
+    {ok, Pid}.
 
 %%--------------------------------------------------------------------
 stop(_State) ->
