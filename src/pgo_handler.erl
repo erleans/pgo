@@ -319,6 +319,8 @@ encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, IntegerDateTi
 requires_statement_description(Parameters) ->
     pgo_protocol:bind_requires_statement_description(Parameters).
 
+-spec pgsql_extended_query_receive_loop(extended_query_loop_state(), fun(), list(), list(), atom(), {pid(), gen_tcp:socket()})
+                                       -> #pg_result{} | {error, any()}.
 pgsql_extended_query_receive_loop(LoopState, Fun, Acc0, QueryOptions, Pool, Socket) ->
     case receive_message(Socket) of
         {ok, Message} ->

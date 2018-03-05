@@ -31,8 +31,7 @@ select_null_test_() ->
     end,
     fun({_SupPid, _PoolPid}) ->
     [
-        ?_assertMatch(#pg_result{command=select,
-                                 rows=[{null}]}, pgo:query(default, "select null")),
+        ?_assertMatch(#pg_result{rows=[{null}]}, pgo:query(default, "select null")),
         ?_assertMatch(#pg_result{rows=[{null}]}, pgo:query(default, "select null", [])),
         ?_assertMatch(#pg_result{rows=[{null}]}, pgo:query(default, "select null")),
         ?_assertMatch(#pg_result{rows=[{null}]}, pgo:query(default, "select null", []))

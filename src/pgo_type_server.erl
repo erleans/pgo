@@ -6,7 +6,8 @@
 
 -export([init/1,
          callback_mode/0,
-         ready/3]).
+         ready/3,
+         terminate/3]).
 
 -include("pgo.hrl").
 
@@ -24,6 +25,7 @@ reload_cast(Pid) ->
     gen_statem:cast(Pid, {reload, erlang:monotonic_time()}).
 
 init([Pool, DBOptions]) ->
+    erlang:process_flag(trap_exit, true),
     ets:new(Pool, [named_table, protected, {read_concurrency, true}]),
     {ok, ready, #data{pool=Pool, db_options=DBOptions},
      {next_event, internal, load}}.
@@ -46,6 +48,8 @@ ready(cast, {reload, RequestTime}, Data=#data{pool=Pool,
     load(Pool, LastReload, RequestTime, DBOptions),
     {keep_state, Data#data{last_reload=erlang:monotonic_time()}}.
 
+terminate(_, _, #data{pool=Pool}) ->
+    ets:delete(Pool).
 
 load(Pool, LastReload, RequestTime, DBOptions) when LastReload < RequestTime ->
     {ok, Socket} = pgo_handler:pgsql_open(DBOptions),

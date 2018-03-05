@@ -5,7 +5,7 @@
          query/2,
          query/3,
          checkout/1,
-         checkin/1,
+         checkin/2,
          break/1]).
 
 start_pool(Name, PoolConfig) ->
@@ -15,33 +15,28 @@ query(Query) ->
     query(default, Query).
 
 query(Pool, Query) when is_atom(Pool) ->
-    {ok, Socket, {Pid, _}=Ref} = checkout(Pool),
+    {ok, Ref, {Pid, Socket}} = checkout(Pool),
     try
         pgo_handler:simple_query({Pid, Socket}, Pool, Query)
     after
-        pgo_connection:done(Ref)
+        checkin(Ref, {Pid, Socket})
     end;
 query(Query, Params) ->
     query(default, Query, Params).
 
 query(Pool, Query, Params) ->
-    {ok, Socket, {Pid, _}=Ref} = checkout(Pool),
+    {ok, Ref, {Pid, Socket}} = checkout(Pool),
     try
         pgo_handler:extended_query({Pid, Socket}, Pool, Query, Params)
     after
-        pgo_connection:done(Ref)
+        checkin(Ref, {Pid, Socket})
     end.
 
-checkout(Name) ->
-    case sbroker:ask(Name) of
-        {go, Ref,  {Pid, C}, _, _} ->
-            {ok, C, {Pid, Ref}};
-        {drop, N} ->
-            {drop, N}
-    end.
+checkout(Pool) ->
+    pgo_pool:checkout(Pool, [{queue, true}]).
 
-checkin(Ref) ->
-    pgo_connection:done(Ref).
+checkin(Ref, Conn) ->
+    pgo_pool:checkin(Ref, Conn, []).
 
 break(Ref) ->
     pgo_connection:break(Ref).

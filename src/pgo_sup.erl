@@ -26,12 +26,12 @@ start_child(Name, PoolConfig) ->
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
     SupFlags = #{strategy => simple_one_for_one,
-                 intensity => 0,
-                 period => 1},
-    ChildSpecs = [#{id => pgo_pool_sup,
-                    start => {pgo_pool_sup, start_link, []},
-                    shutdown => 1}],
-    {ok, {SupFlags, ChildSpecs}}.
+                 intensity => 5,
+                 period => 10},
+    ChildSpec = #{id => pgo_pool,
+                  start => {pgo_pool, start_link, []},
+                  shutdown => 1000},
+    {ok, {SupFlags, [ChildSpec]}}.
 
 %%====================================================================
 %% Internal functions
