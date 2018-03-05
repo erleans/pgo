@@ -1,2 +1,2 @@
--record(pg_result, {command,
-                    rows}).
+-record(pg_result, {command :: atom(),
+                    rows    :: list()}).
