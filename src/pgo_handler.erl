@@ -67,9 +67,9 @@
 %%
 %% -spec simple_query(iodata(), pgsql_connection()) ->
 %%     result_tuple() | {error, any()} | [result_tuple() | {error, any()}].
-simple_query(Socket, Pool, Query) ->
+simple_query(Socket={_, S}, Pool, Query) ->
     QueryMessage = pgo_protocol:encode_query_message(Query),
-    case gen_tcp:send(Socket, QueryMessage) of
+    case gen_tcp:send(S, QueryMessage) of
         ok ->
             pgsql_simple_query_loop([], [], [], Pool, Socket);
         {error, _} = _SendQueryError ->
@@ -150,7 +150,7 @@ pgsql_setup(Sock, Options) ->
             pgsql_setup_ssl(Sock, Options)
     end.
 
-pgsql_setup_ssl(Sock, Options) ->
+pgsql_setup_ssl({_, Sock}, Options) ->
     SSLRequestMessage = pgo_protocol:encode_ssl_request_message(),
     case gen_tcp:send(Sock, SSLRequestMessage) of
         ok ->
@@ -187,7 +187,7 @@ pgsql_setup_startup(Socket, Options) ->
                                                             {<<"application_name">>, ApplicationName} | TZOpt]),
     case gen_tcp:send(Socket, StartupMessage) of
         ok ->
-            case receive_message(Socket) of
+            case receive_message({self(), Socket}) of
                 {ok, #error_response{fields = Fields}} ->
                     {error, {pgsql_error, Fields}};
                 {ok, #authentication_ok{}} ->
@@ -228,9 +228,9 @@ pgsql_setup_authenticate_md5_password(Socket, Salt, Options) ->
     MD5ChallengeResponse = ["md5", MD52Hex],
     pgsql_setup_authenticate_password(Socket, MD5ChallengeResponse, Options).
 
-pgsql_setup_authenticate_password(Socket, Password, Options) ->
+pgsql_setup_authenticate_password(Socket={_,S}, Password, Options) ->
     Message = pgo_protocol:encode_password_message(Password),
-    case gen_tcp:send(Socket, Message) of
+    case gen_tcp:send(S, Message) of
         ok ->
             case receive_message(Socket) of
                 {ok, #error_response{fields = Fields}} ->
@@ -245,7 +245,7 @@ pgsql_setup_authenticate_password(Socket, Password, Options) ->
     end.
 
 pgsql_setup_finish(Socket, Options) ->
-    case receive_message(Socket) of
+    case receive_message({self(), Socket}) of
         {ok, #parameter_status{name = _Name, value = _Value}} ->
             %% State1 = handle_parameter(Name, Value, sync, Options),
             pgsql_setup_finish(Socket, Options);
@@ -271,7 +271,7 @@ pgsql_setup_finish(Socket, Options) ->
 %% set_succeeded_or_within_failed_transaction({error, {pgsql_error, _} = Error}) ->
 %%     pgsql_error:is_in_failed_sql_transaction(Error).
 
-pgsql_extended_query(Socket, Pool, Query, Parameters, PerRowFun, Acc0) ->
+pgsql_extended_query(Socket={_,S}, Pool, Query, Parameters, PerRowFun, Acc0) ->
     IntegerDateTimes = true,
     QueryOptions = [],
     ParseMessage = pgo_protocol:encode_parse_message("", Query, []),
@@ -292,7 +292,7 @@ pgsql_extended_query(Socket, Pool, Query, Parameters, PerRowFun, Acc0) ->
     end,
     case PacketT of
         {ok, SinglePacket, LoopState} ->
-            case gen_tcp:send(Socket, SinglePacket) of
+            case gen_tcp:send(S, SinglePacket) of
                 ok ->
                     pgsql_extended_query_receive_loop(LoopState,
                                                       PerRowFun,
@@ -337,19 +337,19 @@ pgsql_extended_query_receive_loop0(#parse_complete{}, parse_complete, Fun, Acc0,
 % We ignore row descriptions sent before bind as the format codes are null.
 pgsql_extended_query_receive_loop0(#parse_complete{}, {parse_complete_with_params, Parameters}, Fun, Acc0, QueryOptions, Pool, Socket) ->
     pgsql_extended_query_receive_loop({parameter_description_with_params, Parameters}, Fun, Acc0, QueryOptions, Pool, Socket);
-pgsql_extended_query_receive_loop0(#parameter_description{data_types = ParameterDataTypes}, {parameter_description_with_params, Parameters}, Fun, Acc0, QueryOptions, Pool, Socket) ->
-    %% State1 = oob_update_oid_map_if_required(ParameterDataTypes, State0),
+pgsql_extended_query_receive_loop0(#parameter_description{data_types = ParameterDataTypes}, {parameter_description_with_params, Parameters}, Fun, Acc0, QueryOptions, Pool, Socket={_,S}) ->
+    oob_update_oid_map_if_required(Pool, Socket, ParameterDataTypes),
     PacketT = encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, true),
     case PacketT of
         {ok, SinglePacket} ->
-            case gen_tcp:send(Socket, SinglePacket) of
+            case gen_tcp:send(S, SinglePacket) of
                 ok ->
                     pgsql_extended_query_receive_loop(pre_bind_row_description, Fun, Acc0, QueryOptions, Pool, Socket);
                 {error, _} = SendError ->
                     SendError
             end;
         {error, _} = Error ->
-            case gen_tcp:send(Socket, pgo_protocol:encode_sync_message()) of
+            case gen_tcp:send(S, pgo_protocol:encode_sync_message()) of
                 ok -> flush_until_ready_for_query(Error, Socket);
                 {error, _} = SendSyncPacketError -> SendSyncPacketError
             end
@@ -365,7 +365,7 @@ pgsql_extended_query_receive_loop0(#bind_complete{}, bind_complete, Fun, Acc0, Q
 pgsql_extended_query_receive_loop0(#no_data{}, row_description, Fun, Acc0, QueryOptions, Pool, Socket) ->
     pgsql_extended_query_receive_loop(no_data, Fun, Acc0, QueryOptions, Pool, Socket);
 pgsql_extended_query_receive_loop0(#row_description{fields = Fields}, row_description, Fun, Acc0, QueryOptions, Pool, Socket) ->
-    %% State1 = oob_update_oid_map_from_fields_if_required(Fields, State0),
+    oob_update_oid_map_from_fields_if_required(Pool, Socket, Fields),
     pgsql_extended_query_receive_loop({rows, Fields}, Fun, Acc0, QueryOptions, Pool, Socket);
 pgsql_extended_query_receive_loop0(#data_row{values = Values}, {rows, Fields} = LoopState, Fun, Acc0, QueryOptions, Pool, Socket) ->
     DecodedRow = pgo_protocol:decode_row(Fields, Values, Pool, QueryOptions),
@@ -374,18 +374,18 @@ pgsql_extended_query_receive_loop0(#command_complete{command_tag = Tag}, _LoopSt
     DecodeTag = decode_tag(Tag),
     pgsql_extended_query_receive_loop({result, #pg_result{command=element(1, DecodeTag),
                                                           rows=lists:reverse(Acc0)}}, Fun, Acc0, QueryOptions, Pool, Socket);
-pgsql_extended_query_receive_loop0(#portal_suspended{}, LoopState, Fun, Acc0, QueryOptions, Pool, Socket) ->
+pgsql_extended_query_receive_loop0(#portal_suspended{}, LoopState, Fun, Acc0, QueryOptions, Pool, Socket={_,S}) ->
     ExecuteMessage = pgo_protocol:encode_execute_message("", 0),
     FlushMessage = pgo_protocol:encode_flush_message(),
     SinglePacket = [ExecuteMessage, FlushMessage],
-    case gen_tcp:send(Socket, SinglePacket) of
+    case gen_tcp:send(S, SinglePacket) of
         ok -> pgsql_extended_query_receive_loop(LoopState, Fun, Acc0, QueryOptions, Pool, Socket);
         {error, _} = SendSinglePacketError ->
             SendSinglePacketError
     end;
 pgsql_extended_query_receive_loop0(#ready_for_query{}, {result, Result}, _Fun, _Acc0, _QueryOptions, _Pool, _Socket) ->
     Result;
-pgsql_extended_query_receive_loop0(#error_response{fields = Fields}, LoopState, _Fun, _Acc0, _QueryOptions, _Pool, Socket) ->
+pgsql_extended_query_receive_loop0(#error_response{fields = Fields}, LoopState, _Fun, _Acc0, _QueryOptions, _Pool, Socket={_,S}) ->
     Error = {error, {pgsql_error, Fields}},
     % We already sent a Sync except when we sent a Flush :-)
     % - when we asked for the statement description
@@ -397,7 +397,7 @@ pgsql_extended_query_receive_loop0(#error_response{fields = Fields}, LoopState, 
                end,
     case NeedSync of
         true ->
-            case gen_tcp:send(Socket, pgo_protocol:encode_sync_message()) of
+            case gen_tcp:send(S, pgo_protocol:encode_sync_message()) of
                 ok -> flush_until_ready_for_query(Error, Socket);
                 {error, _} = SendSyncPacketError -> SendSyncPacketError
             end;
@@ -427,7 +427,7 @@ flush_until_ready_for_query(Result, Socket) ->
 %% @doc Receive a single packet (in passive mode). Notifications and
 %% notices are broadcast to subscribers.
 %%
-receive_message(Socket) ->
+receive_message({_, Socket}) ->
     case gen_tcp:recv(Socket, ?MESSAGE_HEADER_SIZE) of
         {ok, <<Code:8/integer, Size:32/integer>>} ->
             Payload = Size - 4,
@@ -491,3 +491,22 @@ decode_object(Object) ->
     ObjectUStr = re:replace(Object, <<" ">>, <<"_">>, [global, {return, list}]),
     ObjectULC = string:to_lower(ObjectUStr),
     [list_to_atom(ObjectULC)].
+
+%%--------------------------------------------------------------------
+%% @doc Update the OID Map out of band, opening a new connection.
+%%
+oob_update_oid_map_from_fields_if_required(Pool, Socket, Fields) ->
+    OIDs = [OID || #row_description_field{data_type_oid = OID} <- Fields],
+    oob_update_oid_map_if_required(Pool, Socket, OIDs).
+
+oob_update_oid_map_if_required(Pool, Socket, OIDs) ->
+    Required = lists:any(fun(OID) ->
+                                 not ets:member(Pool, OID)
+                         end, OIDs),
+    case Required of
+        true -> oob_update_oid_map(Socket);
+        false -> ok
+    end.
+
+oob_update_oid_map({Pid, _}) ->
+    pgo_connection:reload_types(Pid).

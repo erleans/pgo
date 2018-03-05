@@ -10,16 +10,16 @@
 -define(SERVER, ?MODULE).
 
 start_link(Name, DBOptions) ->
-    supervisor:start_link(?MODULE, [Name, DBOptions]).
+    supervisor:start_link(?MODULE, [self(), Name, DBOptions]).
 
 start_child(Sup) ->
     supervisor:start_child(Sup, []).
 
-init([Name, DBOptions]) ->
+init([Sup, Name, DBOptions]) ->
     SupFlags = #{strategy => simple_one_for_one,
                  intensity => 5,
                  period => 10},
     ChildSpecs = [#{id => pgo_connection,
-                    start => {pgo_connection, start_link, [Name, DBOptions, []]},
+                    start => {pgo_connection, start_link, [Sup, Name, DBOptions, []]},
                     shutdown => 100}],
     {ok, {SupFlags, ChildSpecs}}.

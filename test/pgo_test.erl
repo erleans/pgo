@@ -1026,11 +1026,11 @@ custom_enum_test_() ->
                          %% ?assertMatch(#pg_result{command=select, rows=[{{MoodOID, <<"sad">>}}]}
                          %%              when is_integer(MoodOID), pgo:query("select 'sad'::mood;", [])),
                          #pg_result{command=commit} = pgo:query("COMMIT"),
-                         ?assertMatch(#pg_result{command=select, rows=[{{mood, <<"sad">>}}]}, pgo:query("select 'sad'::mood;")),
                          ?assertMatch(#pg_result{command=select, rows=[{{mood, <<"sad">>}}]}, pgo:query("select 'sad'::mood;", [])),
-                         ?assertMatch(#pg_result{command=select, rows=[{{mood, <<"sad">>}}]}, pgo:query("select ?::mood;", [<<"sad">>])),
+                         ?assertMatch(#pg_result{command=select, rows=[{{mood, <<"sad">>}}]}, pgo:query("select 'sad'::mood;", [])),
+                         ?assertMatch(#pg_result{command=select, rows=[{{mood, <<"sad">>}}]}, pgo:query("select $1::mood;", [<<"sad">>])),
                          ?assertMatch(#pg_result{command=select, rows=[{{array, [{mood, <<"sad">>}]}}]}, pgo:query("select '{sad}'::mood[];")),
-                         ?assertMatch(#pg_result{command=select, rows=[{{array, [{mood, <<"sad">>}]}}]}, pgo:query("select ?::mood[];", [{array, [<<"sad">>]}]))
+                         ?assertMatch(#pg_result{command=select, rows=[{{array, [{mood, <<"sad">>}]}}]}, pgo:query("select $1::mood[];", [{array, [<<"sad">>]}]))
                      end)
              ]
      end}.

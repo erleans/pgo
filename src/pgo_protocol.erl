@@ -197,13 +197,8 @@ encode_parameter(Value, _Type, _OIDMap, _IntegerDateTimes) ->
 
 encode_array(Elements, ArrayType, OIDMap, IntegerDateTimes) ->
     ElementType = array_type_to_element_type(ArrayType, OIDMap),
-    {EncodingType, ArrayElements} = encode_array_elements(Elements, ElementType, OIDMap, IntegerDateTimes, undefined, []),
-    case EncodingType of
-        binary when ElementType =/= undefined ->
-            encode_array_binary(ArrayElements, ElementType);
-        undefined when ElementType =/= undefined ->
-            encode_array_binary(ArrayElements, ElementType)
-    end.
+    ArrayElements = encode_array_elements(Elements, ElementType, OIDMap, IntegerDateTimes, []),
+    encode_array_binary(ArrayElements, ElementType).
 
 encode_uuid(U) when is_integer(U) ->
     <<16:1/big-signed-unit:32, U:128>>;
@@ -259,19 +254,16 @@ array_type_to_element_type(TypeOID, OIDMap) ->
             end
     end.
 
-encode_array_elements([{array, SubArray} | Tail], ElementType, OIDMap, IntegerDateTimes, EncodingType, Acc) ->
-    {NewEncodingType, SubArrayElements} = encode_array_elements(SubArray, ElementType, OIDMap, IntegerDateTimes, EncodingType, []),
-    encode_array_elements(Tail, ElementType, OIDMap, IntegerDateTimes, NewEncodingType, [{array, SubArrayElements} | Acc]);
-encode_array_elements([null | Tail], ElementType, OIDMap, IntegerDateTimes, EncodingType, Acc) ->
-    encode_array_elements(Tail, ElementType, OIDMap, IntegerDateTimes, EncodingType, [null | Acc]);
-encode_array_elements([Element | Tail], ElementType, OIDMap, IntegerDateTimes, undefined, Acc) ->
-    {EncodingType, Encoded} = encode_parameter(Element, ElementType, OIDMap, IntegerDateTimes),
-    encode_array_elements(Tail, ElementType, OIDMap, IntegerDateTimes, EncodingType, [Encoded | Acc]);
-encode_array_elements([Element | Tail], ElementType, OIDMap, IntegerDateTimes, EncodingType, Acc) ->
-    {EncodingType, Encoded} = encode_parameter(Element, ElementType, OIDMap, IntegerDateTimes),
-    encode_array_elements(Tail, ElementType, OIDMap, IntegerDateTimes, EncodingType, [Encoded | Acc]);
-encode_array_elements([], _ElementType, _OIDMap, _IntegerDateTimes, EncodingType, Acc) ->
-    {EncodingType, lists:reverse(Acc)}.
+encode_array_elements([{array, SubArray} | Tail], ElementType, OIDMap, IntegerDateTimes, Acc) ->
+    SubArrayElements = encode_array_elements(SubArray, ElementType, OIDMap, IntegerDateTimes, []),
+    encode_array_elements(Tail, ElementType, OIDMap, IntegerDateTimes, [{array, SubArrayElements} | Acc]);
+encode_array_elements([null | Tail], ElementType, OIDMap, IntegerDateTimes, Acc) ->
+    encode_array_elements(Tail, ElementType, OIDMap, IntegerDateTimes, [null | Acc]);
+encode_array_elements([Element | Tail], ElementType, OIDMap, IntegerDateTimes, Acc) ->
+    Encoded = encode_parameter(Element, ElementType, OIDMap, IntegerDateTimes),
+    encode_array_elements(Tail, ElementType, OIDMap, IntegerDateTimes, [Encoded | Acc]);
+encode_array_elements([], _ElementType, _OIDMap, _IntegerDateTimes, Acc) ->
+    lists:reverse(Acc).
 
 encode_array_binary(ArrayElements, ElementTypeOID) ->
     {HasNulls, Rows} = encode_array_binary_row(ArrayElements, false, []),
@@ -279,7 +271,7 @@ encode_array_binary(ArrayElements, ElementTypeOID) ->
     Header = encode_array_binary_header(Dims, HasNulls, ElementTypeOID),
     Encoded = list_to_binary([Header, Rows]),
     Size = byte_size(Encoded),
-    {binary, <<Size:32/integer, Encoded/binary>>}.
+    <<Size:32/integer, Encoded/binary>>.
 
 encode_array_binary_row([null | Tail], _HasNull, Acc) ->
     encode_array_binary_row(Tail, true, [<<-1:32/integer>> | Acc]);

@@ -24,7 +24,7 @@ callback_mode() ->
 
 connect(internal, start_connections, #data{sup=Sup, size=Size}) ->
     ConnSup = pgo_pool_sup:whereis_child(Sup, connection_sup),
-    [pgo_connection_sup:start_child(ConnSup) || _ <- lists:seq(1, Size)],
+    [{ok, _} = pgo_connection_sup:start_child(ConnSup) || _ <- lists:seq(1, Size)],
 
     TypeServer = pgo_pool_sup:whereis_child(Sup, type_server),
     pgo_type_server:reload(TypeServer),

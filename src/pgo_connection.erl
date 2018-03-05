@@ -2,7 +2,8 @@
 
 -behaviour(gen_statem).
 
--export([start_link/3,
+-export([start_link/4,
+         reload_types/1,
          done/1,
          break/1]).
 
@@ -19,10 +20,14 @@
                conn,
                db_options,
                broker,
+               sup,
                backoff :: backoff:backoff()}).
 
-start_link(Broker, Args, Opts) ->
-    gen_statem:start_link(?MODULE, {Broker, Args}, Opts).
+start_link(Sup, Broker, Args, Opts) ->
+    gen_statem:start_link(?MODULE, {Sup, Broker, Args}, Opts).
+
+reload_types(Pid) ->
+    gen_statem:call(Pid, reload_types).
 
 done({Pid, Ref}) ->
     gen_statem:cast(Pid, {done, Ref});
@@ -35,11 +40,12 @@ break(undefined) ->
     ok.
 
 %% @private
-init({Broker, Settings}) ->
+init({Sup, Broker, Settings}) ->
     erlang:process_flag(trap_exit, true),
     B = backoff:init(1000, 10000),
     {ok, disconnected, #data{broker=Broker,
                              backoff=B,
+                             sup=Sup,
                              db_options=Settings},
      {next_event, internal, connect}}.
 
@@ -147,6 +153,10 @@ cancel_or_await(Broker, Tag) ->
             cancelled
     end.
 
+handle_event({call, From}, reload_types, #data{sup=Sup}) ->
+    TypeServer = pgo_pool_sup:whereis_child(Sup, type_server),
+    pgo_type_server:reload(TypeServer),
+    {keep_state_and_data, [{reply, From, ok}]};
 handle_event(_, _, _) ->
     keep_state_and_data.
 

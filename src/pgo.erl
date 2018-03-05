@@ -15,9 +15,9 @@ query(Query) ->
     query(default, Query).
 
 query(Pool, Query) when is_atom(Pool) ->
-    {ok, Socket, Ref} = checkout(Pool),
+    {ok, Socket, {Pid, _}=Ref} = checkout(Pool),
     try
-        pgo_handler:simple_query(Socket, Pool, Query)
+        pgo_handler:simple_query({Pid, Socket}, Pool, Query)
     after
         pgo_connection:done(Ref)
     end;
@@ -25,9 +25,9 @@ query(Query, Params) ->
     query(default, Query, Params).
 
 query(Pool, Query, Params) ->
-    {ok, Socket, Ref} = checkout(Pool),
+    {ok, Socket, {Pid, _}=Ref} = checkout(Pool),
     try
-        pgo_handler:extended_query(Socket, Pool, Query, Params)
+        pgo_handler:extended_query({Pid, Socket}, Pool, Query, Params)
     after
         pgo_connection:done(Ref)
     end.
