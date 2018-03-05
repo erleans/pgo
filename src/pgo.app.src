@@ -8,7 +8,7 @@
     stdlib,
     backoff,
     sbroker,
-    pgsql
+    jsx
    ]},
   {env,[]},
   {modules, []},

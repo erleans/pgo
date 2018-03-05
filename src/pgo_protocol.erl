@@ -946,7 +946,6 @@ decode_value_bin(?PATHOID, <<0:8/unsigned-integer, PointsBin/binary>>, _OIDMap, 
 decode_value_bin(?POLYGONOID, Points, _OIDMap, _DecodeOptions) -> {polygon, decode_points_bin(Points)};
 decode_value_bin(?VOIDOID, <<>>, _OIDMap, _DecodeOptions) -> null;
 decode_value_bin(TypeOID, Value, OIDMap, DecodeOptions) ->
-    io:format("WHAT?! ~p~n", [TypeOID]),
     Type = decode_oid(TypeOID, OIDMap),
     if not is_atom(Type) -> {Type, Value};
         true ->

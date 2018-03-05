@@ -1,10 +1,6 @@
 {"1.1.0",
 [{<<"backoff">>,{pkg,<<"backoff">>,<<"1.1.4">>},0},
  {<<"jsx">>,{pkg,<<"jsx">>,<<"2.9.0">>},0},
- {<<"pgsql">>,
-  {git,"https://github.com/semiocast/pgsql.git",
-       {ref,"79eb1ea36a8056922e17b6986201dd5df802cf04"}},
-  0},
  {<<"sbroker">>,{pkg,<<"sbroker">>,<<"1.0.0">>},0}]}.
 [
 {pkg_hash,[
