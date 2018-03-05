@@ -15,7 +15,7 @@
 start(_StartType, _StartArgs) ->
     Pools = application:get_env(pgo, pools, []),
     {ok, Pid} = pgo_sup:start_link(),
-    [pgo_sup:start_child(Name, PoolConfig) || {Name, PoolConfig} <- Pools],
+    [{ok, _} = pgo_sup:start_child(Name, PoolConfig) || {Name, PoolConfig} <- Pools],
     {ok, Pid}.
 
 %%--------------------------------------------------------------------

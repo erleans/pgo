@@ -15,12 +15,12 @@
          dequeued/3,
          terminate/3]).
 
--record(data, {monitor,
-               ref,
-               conn,
-               db_options,
-               broker,
-               sup,
+-record(data, {monitor :: reference(),
+               ref :: reference(),
+               conn :: gen_tcp:socket(),
+               db_options :: list(),
+               broker :: atom(),
+               sup :: pid(),
                backoff :: backoff:backoff()}).
 
 start_link(Sup, Broker, Args, Opts) ->
@@ -67,7 +67,7 @@ disconnected(EventType, _, Data=#data{broker=Broker,
                                                                   ; EventType =:= state_timeout ->
     try pgo_handler:pgsql_open(DBOptions) of
         {ok, Socket} ->
-            %% erlang:link(Conn),
+            erlang:link(Socket),
             inet:setopts(Socket, [{active, false}]),
             enqueue(Broker, Socket),
             {_, B1} = backoff:succeed(B),
@@ -76,19 +76,21 @@ disconnected(EventType, _, Data=#data{broker=Broker,
             {Backoff, B1} = backoff:fail(B),
             {next_state, disconnected, #data{broker=Broker,
                                              backoff=B1,
-                                             db_options=DBOptions}, [{state_timeout, Backoff, connect}]}
+                                             db_options=DBOptions},
+             [{state_timeout, Backoff, connect}]}
     catch
         throw:_Reason ->
             {Backoff, B1} = backoff:fail(B),
             {next_state, disconnected, #data{broker=Broker,
                                              backoff=B1,
-                                             db_options=DBOptions}, [{state_timeout, Backoff, connect}]}
+                                             db_options=DBOptions},
+             [{state_timeout, Backoff, connect}]}
     end;
 disconnected(EventType, EventContent, Data) ->
     handle_event(EventType, EventContent, Data).
 
 connected(internal, {enqueue, Socket}, Data=#data{broker=Broker}) ->
-    %% erlang:link(Conn),
+    erlang:link(Socket),
     enqueue(Broker, Socket),
     {next_state, enqueued, Data#data{}};
 connected(EventType, EventContent, Data) ->
@@ -123,7 +125,7 @@ dequeued(_, {done, _Ref}, Data=#data{monitor=Monitor,
                                      broker=Broker,
                                      conn=Socket}) ->
     erlang:demonitor(Monitor, [flush]),
-    %% erlang:link(Conn),
+    erlang:link(Socket),
     enqueue(Broker, Socket),
     {next_state, enqueued, Data};
 dequeued(info, {'DOWN', Mon, process, _Pid, _}, Data=#data{conn=Conn,
@@ -136,10 +138,10 @@ dequeued(info, {'EXIT', Pid, _}, Data=#data{conn=Pid}) ->
                                          monitor=undefined},
      {next_event, internal, connect}};
 dequeued(cast, {break, _Ref}, Data=#data{monitor=Monitor,
-                                         conn=Conn}) ->
+                                         conn=Socket}) ->
     erlang:demonitor(Monitor, [flush]),
-    erlang:unlink(Conn),
-    pgo_handler:close(Conn),
+    erlang:unlink(Socket),
+    pgo_handler:close(Socket),
     {next_state, disconnected, Data,
      [{next_event, internal, connect}]};
 dequeued(EventType, EventContent, Data) ->

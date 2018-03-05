@@ -8,9 +8,9 @@
 
 -include("pgo.hrl").
 
--record(data, {sup,
-               pool,
-               size}).
+-record(data, {sup  :: pid(),
+               pool :: atom(),
+               size :: integer()}).
 
 start_link(Pool, Size) ->
     gen_statem:start_link(?MODULE, [self(), Pool, Size], []).

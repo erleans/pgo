@@ -10,9 +10,9 @@
 
 -include("pgo.hrl").
 
--record(data, {pool,
-               db_options,
-               last_reload}).
+-record(data, {pool        :: atom(),
+               db_options  :: list(),
+               last_reload :: integer()}).
 
 start_link(Pool, DBOptions) ->
     gen_statem:start_link(?MODULE, [Pool, DBOptions], []).
