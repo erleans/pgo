@@ -67,8 +67,6 @@ disconnected(EventType, _, Data=#data{broker=Broker,
                                                                   ; EventType =:= state_timeout ->
     try pgo_handler:pgsql_open(DBOptions) of
         {ok, Socket} ->
-            erlang:link(Socket),
-            inet:setopts(Socket, [{active, false}]),
             enqueue(Broker, Socket),
             {_, B1} = backoff:succeed(B),
             {next_state, enqueued, Data#data{conn=Socket, backoff=B1}};
@@ -90,7 +88,6 @@ disconnected(EventType, EventContent, Data) ->
     handle_event(EventType, EventContent, Data).
 
 connected(internal, {enqueue, Socket}, Data=#data{broker=Broker}) ->
-    erlang:link(Socket),
     enqueue(Broker, Socket),
     {next_state, enqueued, Data#data{}};
 connected(EventType, EventContent, Data) ->
@@ -125,7 +122,6 @@ dequeued(_, {done, _Ref}, Data=#data{monitor=Monitor,
                                      broker=Broker,
                                      conn=Socket}) ->
     erlang:demonitor(Monitor, [flush]),
-    erlang:link(Socket),
     enqueue(Broker, Socket),
     {next_state, enqueued, Data};
 dequeued(info, {'DOWN', Mon, process, _Pid, _}, Data=#data{conn=Conn,
