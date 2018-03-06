@@ -39,12 +39,12 @@ break({Pid, Ref}) ->
 break(undefined) ->
     ok.
 
-%% @private
 init({Sup, Broker, Settings}) ->
     erlang:process_flag(trap_exit, true),
     B = backoff:init(1000, 10000),
     {ok, disconnected, #data{broker=Broker,
                              backoff=B,
+                             ref=make_ref(),
                              sup=Sup,
                              db_options=Settings},
      {next_event, internal, connect}}.
@@ -52,22 +52,15 @@ init({Sup, Broker, Settings}) ->
 callback_mode() ->
     state_functions.
 
-%% Internal
-
-%% init -> connect -> enqueue
-%% states: broken, connected, queued, dequeued
-%% state: dequeued, 'EXIT' -> ?? -> enqueue
-%% state: dequeued, 'done' -> ?? -> enqueue
-%% state: enqueued, break -> disconnect -> connect -> enqueue
-
 disconnected(EventType, _, Data=#data{broker=Broker,
                                       backoff=B,
+                                      ref=Ref,
                                       db_options=DBOptions}) when EventType =:= internal
                                                                   ; EventType =:= timeout
                                                                   ; EventType =:= state_timeout ->
     try pgo_handler:pgsql_open(DBOptions) of
         {ok, Socket} ->
-            enqueue(Broker, Socket),
+            enqueue(Broker, Socket, Ref),
             {_, B1} = backoff:succeed(B),
             {next_state, enqueued, Data#data{conn=Socket, backoff=B1}};
         _Error ->
@@ -87,8 +80,9 @@ disconnected(EventType, _, Data=#data{broker=Broker,
 disconnected(EventType, EventContent, Data) ->
     handle_event(EventType, EventContent, Data).
 
-connected(internal, {enqueue, Socket}, Data=#data{broker=Broker}) ->
-    enqueue(Broker, Socket),
+connected(internal, {enqueue, Socket}, Data=#data{broker=Broker,
+                                                  ref=Ref}) ->
+    enqueue(Broker, Socket, Ref),
     {next_state, enqueued, Data#data{}};
 connected(EventType, EventContent, Data) ->
     handle_event(EventType, EventContent, Data).
@@ -99,30 +93,19 @@ enqueued(info, {_, {go, Ref, Pid, _, _}}, Data=#data{}) ->
 enqueued(info, {Pid, {drop, _}}, Data) ->
     {next_state, connected, Data, {next_event, internal, {enqueue, Pid}}};
 enqueued(info, {'EXIT', Pid, _}, Data=#data{broker=Broker}) ->
-    case cancel_or_await(Broker, Pid) of
-        cancelled ->
-            {next_state, disconnected, Data#data{ref=undefined,
-                                                 monitor=undefined},
-             {next_event, internal, connect}};
-        {go, _Ref, _Pid, _, _} ->
-            %% ??
-            {next_state, disconnected, Data#data{ref=undefined,
-                                                 monitor=undefined},
-             {next_event, internal, connect}};
-        {drop, _} ->
-            %% ??
-            {next_state, disconnected, Data#data{ref=undefined,
-                                                 monitor=undefined},
-             {next_event, internal, connect}}
-    end;
+    cancel_or_await(Broker, Pid),
+    {next_state, disconnected, Data#data{ref=undefined,
+                                         monitor=undefined},
+     {next_event, internal, connect}};
 enqueued(EventType, EventContent, Data) ->
     handle_event(EventType, EventContent, Data).
 
 dequeued(_, {done, _Ref}, Data=#data{monitor=Monitor,
+                                     ref=Ref,
                                      broker=Broker,
                                      conn=Socket}) ->
     erlang:demonitor(Monitor, [flush]),
-    enqueue(Broker, Socket),
+    enqueue(Broker, Socket, Ref),
     {next_state, enqueued, Data};
 dequeued(info, {'DOWN', Mon, process, _Pid, _}, Data=#data{conn=Conn,
                                                            monitor=Mon}) ->
@@ -162,7 +145,5 @@ handle_event(_, _, _) ->
 terminate(_Reason, _, _) ->
     ok.
 
-enqueue(Broker, Conn) ->
-    sbroker:async_ask_r(Broker, {self(), Conn}),
-    ok.
-
+enqueue(Broker, Conn, Ref) ->
+    {await, Ref, _} = sbroker:async_ask_r(Broker, {self(), Conn}, {self(), Ref}).

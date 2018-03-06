@@ -33,4 +33,4 @@ init([Name, PoolConfig]) ->
                   start => {pgo_connection_starter, start_link, [Name, Size]},
                   shutdown => 5000,
                   type => worker}],
-    {ok, {{one_for_one, 5, 10}, Children}}.
+    {ok, {{rest_for_one, 5, 10}, Children}}.
