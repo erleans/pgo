@@ -149,18 +149,10 @@ encode_parameter(Float, _Type, _OIDMap, _IntegerDateTimes) when is_float(Float) 
     <<4:32/integer, Float:1/big-float-unit:32>>;
 %% encode_parameter(Float, _Type, _OIDMap, _IntegerDateTimes) when is_float(Float) ->
 %%     <<8:32/integer, Float:1/big-float-unit:64>>;
-encode_parameter(Integer, _Type, _OIDMap, _IntegerDateTimes) when is_integer(Integer),
-                                                                  Integer >= -2147483648,
-                                                                  Integer =< 2147483647 ->
-                                                                  %% Integer >= -2147483648 ,
-                                                                  %%  Integer =< 2147483647 ->
-    <<4:32/integer, Integer:32>>;
-    %% <<4:32/integer, Integer:1/big-signed-unit:32>>;
-encode_parameter(Integer, _Type, _OIDMap, _IntegerDateTimes) when is_integer(Integer) ->
-                                                                  %% Integer >= -9223372036854775808 ,
-                                                                  %%  Integer =< 9223372036854775807 ->
-
+encode_parameter({bigint, Integer}, _Type, _OIDMap, _IntegerDateTimes) ->
     <<8:32/integer, Integer:64>>;
+encode_parameter(Integer, _Type, _OIDMap, _IntegerDateTimes) when is_integer(Integer) ->
+    <<4:32/integer, Integer:32>>;
 encode_parameter(null, _Type, _OIDMap, _IntegerDateTimes) ->
     <<-1:32/integer>>;
 encode_parameter(true, _Type, _OIDMap, _IntegerDateTimes) ->
