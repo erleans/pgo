@@ -175,7 +175,7 @@ drop_slow(Time, Timeout, Queue) ->
     ets:select_delete(Queue, [{Match, Guards, [true]}]).
 
 ping(Holder, Queue, Codel) ->
-    [{_, Conn, _, _, State}] = ets:lookup(Holder, ?HOLDER_KEY),
+    [{_, Conn, _, State}] = ets:lookup(Holder, ?HOLDER_KEY),
     pgo_connection:ping({Conn, Holder}, State),
     ets:delete(Holder),
     {noreply, {ready, Queue, Codel}}.
@@ -310,7 +310,7 @@ stop_holder(Holder, Err) ->
     delete_holder(Holder, Err).
 
 delete_holder(Holder, _Err) ->
-    [{_, _Conn, Deadline, _, _State}] = ets:lookup(Holder, ?HOLDER_KEY),
+    [{_, _Conn, Deadline, _State}] = ets:lookup(Holder, ?HOLDER_KEY),
     ets:delete(Holder),
     cancel_deadline(Deadline).
     %% disconnect({Conn, Holder}, Err, State, []).

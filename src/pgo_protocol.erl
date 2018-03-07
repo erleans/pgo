@@ -129,11 +129,21 @@ encode_bind_message(PortalName, StatementName, Parameters, ParametersDataTypes, 
 %% encoded as binaries.
 %%
 -spec encode_parameter(any(), pgsql_oid() | undefined, pgsql_oid_map(), boolean()) -> binary().
-encode_parameter({array, List}, Type, OIDMap, IntegerDateTimes) ->
-    encode_array(List, Type, OIDMap, IntegerDateTimes);
+encode_parameter(null, _Type, _OIDMap, _IntegerDateTimes) ->
+    <<-1:32/integer>>;
+encode_parameter(UUID = <<_:36/binary>>, ?UUIDOID, _OIDMap, _IntegerDateTimes) ->
+    encode_uuid(UUID);
+encode_parameter({uuid, UUID}, ?UUIDOID, _OIDMap, _IntegerDateTimes) ->
+    encode_uuid(UUID);
 encode_parameter(Binary, ?TEXTOID, _OIDMap, _IntegerDateTimes) when is_binary(Binary) ->
+    Text = unicode:characters_to_binary(Binary, utf8),
+    Size = byte_size(Text),
+    <<Size:32/integer, Text/binary>>;
+encode_parameter(Binary, _Type, _OIDMap, _IntegerDateTimes) when is_binary(Binary) ->
     Size = byte_size(Binary),
     <<Size:32/integer, Binary/binary>>;
+encode_parameter({array, List}, Type, OIDMap, IntegerDateTimes) ->
+    encode_array(List, Type, OIDMap, IntegerDateTimes);
 encode_parameter({json, Binary}, _Type, _OIDMap, _IntegerDateTimes) ->
     Size = byte_size(Binary),
     <<Size:32/integer, Binary/binary>>;
@@ -142,19 +152,16 @@ encode_parameter({jsonb, Binary}, _Type, _OIDMap, _IntegerDateTimes) ->
     <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
 encode_parameter({uuid, UUID}, _Type, _OIDMap, _IntegerDateTimes) ->
     encode_uuid(UUID);
-encode_parameter(Binary, _Type, _OIDMap, _IntegerDateTimes) when is_binary(Binary) ->
-    Size = byte_size(Binary),
-    <<Size:32/integer, Binary/binary>>;
 encode_parameter(Float, _Type, _OIDMap, _IntegerDateTimes) when is_float(Float) ->
     <<4:32/integer, Float:1/big-float-unit:32>>;
 %% encode_parameter(Float, _Type, _OIDMap, _IntegerDateTimes) when is_float(Float) ->
 %%     <<8:32/integer, Float:1/big-float-unit:64>>;
 encode_parameter({bigint, Integer}, _Type, _OIDMap, _IntegerDateTimes) ->
     <<8:32/integer, Integer:64>>;
+encode_parameter(Integer, ?INT8OID, _OIDMap, _IntegerDateTimes) ->
+    <<8:32/integer, Integer:64>>;
 encode_parameter(Integer, _Type, _OIDMap, _IntegerDateTimes) when is_integer(Integer) ->
     <<4:32/integer, Integer:32>>;
-encode_parameter(null, _Type, _OIDMap, _IntegerDateTimes) ->
-    <<-1:32/integer>>;
 encode_parameter(true, _Type, _OIDMap, _IntegerDateTimes) ->
     <<1:32/integer, 1:1/big-signed-unit:8>>;
 encode_parameter(false, _Type, _OIDMap, _IntegerDateTimes) ->
@@ -184,6 +191,11 @@ encode_parameter({Year, Month, Day}, Type, OIDMap, IntegerDateTimes) when Month 
     encode_parameter(lists:flatten(io_lib:format("~4.10.0B-~2.10.0B-~2.10.0B", [Year, Month, Day])), Type, OIDMap, IntegerDateTimes);
 encode_parameter({point, {X,Y}}, _Type, _OIDMap, _IntegerDateTimes) ->
     <<X:1/big-float-unit:64, Y:1/big-float-unit:64>>;
+encode_parameter(Binary, _, _OIDMap, _IntegerDateTimes) when is_binary(Binary)
+                                                             ; is_list(Binary)->
+    Text = unicode:characters_to_binary(Binary, utf8),
+    Size = byte_size(Text),
+    <<Size:32/integer, Text/binary>>;
 encode_parameter(Value, _Type, _OIDMap, _IntegerDateTimes) ->
     throw({badarg, Value}).
 
@@ -192,6 +204,8 @@ encode_array(Elements, ArrayType, OIDMap, IntegerDateTimes) ->
     ArrayElements = encode_array_elements(Elements, ElementType, OIDMap, IntegerDateTimes, []),
     encode_array_binary(ArrayElements, ElementType).
 
+encode_uuid(null) ->
+    <<-1:32/integer>>;
 encode_uuid(U) when is_integer(U) ->
     <<16:1/big-signed-unit:32, U:128>>;
 encode_uuid(U) when is_binary(U) ->
@@ -203,6 +217,8 @@ encode_uuid(U) ->
 
 array_type_to_element_type(undefined, _OIDMap) -> undefined;
 array_type_to_element_type(?CIDRARRAYOID, _OIDMap) -> ?CIDROID;
+array_type_to_element_type(?JSONBOID, _OIDMap) -> ?JSONBOID;
+array_type_to_element_type(?JSONOID, _OIDMap) -> ?JSONOID;
 array_type_to_element_type(?BOOLARRAYOID, _OIDMap) -> ?BOOLOID;
 array_type_to_element_type(?BYTEAARRAYOID, _OIDMap) -> ?BYTEAOID;
 array_type_to_element_type(?CHARARRAYOID, _OIDMap) -> ?CHAROID;
@@ -770,9 +786,11 @@ decode_value_text(TypeOID, Value, _OIDMap, _DecodeOptions) when TypeOID =:= ?TEX
             orelse TypeOID =:= ?VARCHAROID
              -> Value;
 decode_value_text(?JSONOID, Value, _, _) ->
-    jsx:decode(Value, [return_maps]);
+    {json, Value};
+    %% jsx:decode(Value, [return_maps]);
 decode_value_text(?JSONBOID, Value, _, _) ->
-    jsx:decode(Value, [return_maps]);
+    {jsonb, Value};
+    %% jsx:decode(Value, [return_maps]);
 decode_value_text(TypeOID, Value, Pool, DecodeOptions) ->
     Type = decode_oid(TypeOID, Pool),
     if not is_atom(Type) -> {Type, Value};
@@ -892,7 +910,7 @@ decode_array_text0(<<$\\, C, Rest/binary>>, true, Acc) ->
 decode_array_text0(<<C, Rest/binary>>, Quoted, Acc) ->
     decode_array_text0(Rest, Quoted, [C | Acc]).
 
-decode_value_bin(?JSONBOID, <<?JSONB_VERSION_1:8, Value/binary>>, _OIDMap, _IntegerDateTimes) -> jsx:decode(Value, [return_maps]);
+decode_value_bin(?JSONBOID, <<?JSONB_VERSION_1:8, Value/binary>>, _OIDMap, _IntegerDateTimes) -> Value;
 decode_value_bin(?BOOLOID, <<0>>, _OIDMap, _DecodeOptions) -> false;
 decode_value_bin(?BOOLOID, <<1>>, _OIDMap, _DecodeOptions) -> true;
 decode_value_bin(?BYTEAOID, Value, _OIDMap, _DecodeOptions) -> Value;

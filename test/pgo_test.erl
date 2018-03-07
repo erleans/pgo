@@ -202,6 +202,10 @@ types_test_() ->
                 ?assertEqual({11, null, null, null, null, <<"deadbeef">>, null}, Row)
             end)
         },
+     {"Insert uuid 0",
+            ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
+                [199, null, null, null, {uuid, <<"00000000-0000-0000-0000-000000000000">>}, null, null]))
+        },
         {"Insert uuid in lowercase",
             ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                 [16, null, null, null, {uuid, <<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>}, null, null]))
@@ -250,6 +254,28 @@ text_types_test_() ->
              ]
      end
     }.
+
+array_types_test_() ->
+    {setup,
+     fun() ->
+             {ok, SupPid} = pgo_sup:start_link(),
+             {ok, PoolPid} = start_pool(),
+             {SupPid, PoolPid}
+     end,
+     fun({SupPid, PoolPid}) ->
+             supervisor:terminate_child(pgo_sup, PoolPid),
+             kill_sup(SupPid)
+     end,
+     fun({_SupPid, _PoolPid}) ->
+             [
+              ?_assertEqual(#pg_result{command=select,rows=[{{array,[{array,[1,2]},{array, [3,4]}]}}]},
+                            pgo:query("select $1::int[]", [{array, [{array, [1,2]}, {array, [3,4]}]}])),
+              ?_assertEqual(#pg_result{command=select,rows=[{{array,[<<"2">>,<<"3">>]}}]},
+                            pgo:query("select $1::bytea[]", [{array, [<<"2">>, <<"3">>]}]))
+             ]
+     end
+    }.
+
 
 
 %% array_types_test_() ->
@@ -882,50 +908,50 @@ text_types_test_() ->
 %%     ]
 %%     end}.
 
-json_types_test_() ->
-    {setup,
-     fun() ->
-             {ok, SupPid} = pgo_sup:start_link(),
-             {ok, PoolPid} = start_pool(),
-             {SupPid, PoolPid}
-     end,
-     fun({SupPid, PoolPid}) ->
-             supervisor:terminate_child(pgo_sup, PoolPid),
-             kill_sup(SupPid)
-     end,
-     fun({_SupPid, _PoolPid}) ->
-             [?_test(begin
-                         #pg_result{command=create} = pgo:query(default, "create temporary table tmp (id integer primary key, a_json json, b_json json)"),
-                        #pg_result{command=insert} = pgo:query(default, "insert into tmp (id, b_json) values ($1, $2)",
-                                                              [2, {json, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>}]),
-                        ?assertMatch(#pg_result{command=select,
-                                                rows=[{[#{<<"a">> := <<"foo">>},
-                                                        #{<<"b">> := <<"bar">>},
-                                                        #{<<"c">> := <<"baz">>}]}]},
-                                     pgo:query(default, "select '[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]'::json")),
-                         ?assertMatch(#pg_result{command=select,
-                                                 rows=[{[#{<<"a">> := <<"foo">>},
-                                                         #{<<"b">> := <<"bar">>},
-                                                         #{<<"c">> := <<"baz">>}]}]},
-                                      pgo:query(default, "select b_json from tmp where id = 2"))
-                     end),
-              ?_test(begin
-                         #pg_result{command=create} =
-                             pgo:query(default, "create temporary table tmp_b (id integer primary key, a_json jsonb, b_json json)"),
-                         ?assertMatch(#pg_result{command=select,rows=[{[#{<<"a">> := <<"foo">>},
-                                                                        #{<<"b">> := <<"bar">>},
-                                                                        #{<<"c">> := <<"baz">>}]}]},
-                                      pgo:query(default, "select '[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]'::jsonb")),
-                         #pg_result{command=insert} = pgo:query(default, "insert into tmp_b (id, a_json) values ($1, $2)",
-                                                               [1, {jsonb, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>}]),
-                         ?assertMatch(#pg_result{command=select,rows=[{[#{<<"a">> := <<"foo">>},
-                                                                        #{<<"b">> := <<"bar">>},
-                                                                        #{<<"c">> := <<"baz">>}]}]},
-                                      pgo:query(default, "select a_json from tmp_b where id = 1"))
-                     end)
-            ]
-    end
-    }.
+%% json_types_test_() ->
+%%     {setup,
+%%      fun() ->
+%%              {ok, SupPid} = pgo_sup:start_link(),
+%%              {ok, PoolPid} = start_pool(),
+%%              {SupPid, PoolPid}
+%%      end,
+%%      fun({SupPid, PoolPid}) ->
+%%              supervisor:terminate_child(pgo_sup, PoolPid),
+%%              kill_sup(SupPid)
+%%      end,
+%%      fun({_SupPid, _PoolPid}) ->
+%%              [?_test(begin
+%%                          #pg_result{command=create} = pgo:query(default, "create temporary table tmp (id integer primary key, a_json json, b_json json)"),
+%%                         #pg_result{command=insert} = pgo:query(default, "insert into tmp (id, b_json) values ($1, $2)",
+%%                                                               [2, {json, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>}]),
+%%                         ?assertMatch(#pg_result{command=select,
+%%                                                 rows=[{[#{<<"a">> := <<"foo">>},
+%%                                                         #{<<"b">> := <<"bar">>},
+%%                                                         #{<<"c">> := <<"baz">>}]}]},
+%%                                      pgo:query(default, "select '[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]'::json")),
+%%                          ?assertMatch(#pg_result{command=select,
+%%                                                  rows=[{[#{<<"a">> := <<"foo">>},
+%%                                                          #{<<"b">> := <<"bar">>},
+%%                                                          #{<<"c">> := <<"baz">>}]}]},
+%%                                       pgo:query(default, "select b_json from tmp where id = 2"))
+%%                      end),
+%%               ?_test(begin
+%%                          #pg_result{command=create} =
+%%                              pgo:query(default, "create temporary table tmp_b (id integer primary key, a_json jsonb, b_json json)"),
+%%                          ?assertMatch(#pg_result{command=select,rows=[{[#{<<"a">> := <<"foo">>},
+%%                                                                         #{<<"b">> := <<"bar">>},
+%%                                                                         #{<<"c">> := <<"baz">>}]}]},
+%%                                       pgo:query(default, "select '[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]'::jsonb")),
+%%                          #pg_result{command=insert} = pgo:query(default, "insert into tmp_b (id, a_json) values ($1, $2)",
+%%                                                                [1, {jsonb, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>}]),
+%%                          ?assertMatch(#pg_result{command=select,rows=[{[#{<<"a">> := <<"foo">>},
+%%                                                                         #{<<"b">> := <<"bar">>},
+%%                                                                         #{<<"c">> := <<"baz">>}]}]},
+%%                                       pgo:query(default, "select a_json from tmp_b where id = 1"))
+%%                      end)
+%%             ]
+%%     end
+%%     }.
 
 
 %% postgression_ssl_test_() ->
