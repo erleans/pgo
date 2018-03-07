@@ -272,19 +272,19 @@ pgsql_setup_finish(Socket, Options) ->
 %%     pgsql_error:is_in_failed_sql_transaction(Error).
 
 pgsql_extended_query(Socket={_,S}, Pool, Query, Parameters, PerRowFun, Acc0) ->
+    put(query, Query),
     IntegerDateTimes = true,
     QueryOptions = [],
     ParseMessage = pgo_protocol:encode_parse_message("", Query, []),
     % We ask for a description of parameters only if required.
-    NeedStatementDescription = requires_statement_description(Parameters),
-    PacketT = case NeedStatementDescription of
-        true ->
+    PacketT = case pgo_query_cache:lookup(Pool, Query) of
+        not_found ->
             DescribeStatementMessage = pgo_protocol:encode_describe_message(statement, ""),
             FlushMessage = pgo_protocol:encode_flush_message(),
             LoopState0 = {parse_complete_with_params, Parameters},
             {ok, [ParseMessage, DescribeStatementMessage, FlushMessage], LoopState0};
-        false ->
-            case encode_bind_describe_execute(Parameters, [], Pool, IntegerDateTimes) of
+        DataTypes ->
+            case encode_bind_describe_execute(Parameters, DataTypes, Pool, IntegerDateTimes) of
                 {ok, BindExecute} ->
                     {ok, [ParseMessage, BindExecute], parse_complete};
                 {error, _} = Error -> Error
@@ -316,8 +316,8 @@ encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, IntegerDateTi
     SinglePacket = [BindMessage, DescribeMessage, ExecuteMessage, SyncOrFlushMessage],
     {ok, SinglePacket}.
 
-requires_statement_description(Parameters) ->
-    pgo_protocol:bind_requires_statement_description(Parameters).
+%% requires_statement_description(_Parameters) ->
+%%     true. %pgo_protocol:bind_requires_statement_description(Parameters).
 
 -spec pgsql_extended_query_receive_loop(extended_query_loop_state(), fun(), list(), list(), atom(), {pid(), gen_tcp:socket()})
                                        -> #pg_result{} | {error, any()}.
@@ -340,6 +340,7 @@ pgsql_extended_query_receive_loop0(#parse_complete{}, parse_complete, Fun, Acc0,
 pgsql_extended_query_receive_loop0(#parse_complete{}, {parse_complete_with_params, Parameters}, Fun, Acc0, QueryOptions, Pool, Socket) ->
     pgsql_extended_query_receive_loop({parameter_description_with_params, Parameters}, Fun, Acc0, QueryOptions, Pool, Socket);
 pgsql_extended_query_receive_loop0(#parameter_description{data_types = ParameterDataTypes}, {parameter_description_with_params, Parameters}, Fun, Acc0, QueryOptions, Pool, Socket={_,S}) ->
+    pgo_query_cache:insert(Pool, get(query), ParameterDataTypes),
     oob_update_oid_map_if_required(Pool, Socket, ParameterDataTypes),
     PacketT = encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, true),
     case PacketT of

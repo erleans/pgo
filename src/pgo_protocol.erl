@@ -566,7 +566,8 @@ decode_ready_for_query_message(Payload) ->
 
 decode_row_description_message(<<Count:16/integer, Rest/binary>> = Payload) when Count >= 0 ->
     case decode_row_description_message0(Count, Rest, []) of
-        {ok, Fields} -> {ok, #row_description{count = Count, fields = Fields}};
+        {ok, Fields} ->
+            {ok, #row_description{count = Count, fields = Fields}};
         {error, _} ->
             {error, {unknown_message, row_description, Payload}}
     end;
