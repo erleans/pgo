@@ -8,6 +8,11 @@
          checkin/2,
          break/1]).
 
+-include("pgo.hrl").
+
+-export_type([result/0]).
+-type result() :: #pg_result{}.
+
 start_pool(Name, PoolConfig) ->
     pgo_sup:start_child(Name, PoolConfig).
 
