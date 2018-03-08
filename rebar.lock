@@ -1,8 +1,6 @@
 {"1.1.0",
-[{<<"backoff">>,{pkg,<<"backoff">>,<<"1.1.4">>},0},
- {<<"jsx">>,{pkg,<<"jsx">>,<<"2.9.0">>},0}]}.
+[{<<"backoff">>,{pkg,<<"backoff">>,<<"1.1.4">>},0}]}.
 [
 {pkg_hash,[
- {<<"backoff">>, <<"493BD97C41AF4FCA12030EA399790AD4B59523AD0A440AC3C72B005225E74ADC">>},
- {<<"jsx">>, <<"D2F6E5F069C00266CAD52FB15D87C428579EA4D7D73A33669E12679E203329DD">>}]}
+ {<<"backoff">>, <<"493BD97C41AF4FCA12030EA399790AD4B59523AD0A440AC3C72B005225E74ADC">>}]}
 ].
