@@ -19,9 +19,9 @@ To try `pgo` simply modify `config/example.config` by replacing the `host`, `dat
 ```erlang
 [
   {pgo, [{pools, [{default, [{size, 10},
-                             {postgres, [{host, "127.0.0.1"},
-                                         {database, "test"},
-                                         {user, "test"}]}]}]}]}
+                             {host, "127.0.0.1"},
+                             {database, "test"},
+                             {user, "test"}]}]}]}
 ].
 ```
 

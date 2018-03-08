@@ -17,7 +17,7 @@ kill_sup(SupPid) ->
 
 start_pool() ->
     pgo_query_cache:start_link(),
-    pgo:start_pool(default, [{size, 1}, {postgres, [{database, "test"}, {user, "test"}]}]).
+    pgo:start_pool(default, [{size, 1}, {database, "test"}, {user, "test"}]).
 
 bad_query_parse_test_() ->
     {setup,

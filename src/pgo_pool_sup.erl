@@ -19,9 +19,8 @@ whereis_child(Sup, Id) ->
 
 init([Queue, PoolPid, PoolName, PoolConfig]) ->
     Size = proplists:get_value(size, PoolConfig, 5),
-    DBConfig = proplists:get_value(postgres, PoolConfig, []),
     Children = [#{id => connection_sup,
-                  start => {pgo_connection_sup, start_link, [Queue, PoolPid, PoolName, DBConfig]},
+                  start => {pgo_connection_sup, start_link, [Queue, PoolPid, PoolName, PoolConfig]},
                   type => supervisor,
                   shutdown => 5000},
                 #{id => connection_starter,
@@ -29,7 +28,7 @@ init([Queue, PoolPid, PoolName, PoolConfig]) ->
                   type => worker,
                   shutdown => 5000},
                 #{id => type_server,
-                  start => {pgo_type_server, start_link, [PoolName, DBConfig]},
+                  start => {pgo_type_server, start_link, [PoolName, PoolConfig]},
                   type => worker,
                   shutdown => 5000}],
     {ok, {{rest_for_one, 5, 10}, Children}}.
