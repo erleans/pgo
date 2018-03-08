@@ -8,6 +8,7 @@ PG...Oh god not nother Postgres client in Erlang...
 * No message passing. Clients checkout the socket and use it directly.
 * Binary protocol with input oids cached.
 * Simple and direct. Tries to limit runtime options as much as possible.
+* Instrumented with [OpenCensus](https://github.com/census-instrumentation/opencensus-erlang)
 * Mix apps currently too hard to use in a Rebar3 project. 
 
 ### Use
@@ -33,7 +34,7 @@ Then start a shell with `rebar3`, it will boot the applications which will start
 $ rebar3 shell 
 
 1> pgo:query("select 1").
-#pg_result{command=select, rows=[{1}]}
+#pg_result{command=select, num_rows=1, rows=[{1}]}
 ```
 
 ### Running Tests
