@@ -16,7 +16,25 @@ kill_sup(SupPid) ->
     process_flag(trap_exit, OldTrapExit).
 
 start_pool() ->
+    pgo_query_cache:start_link(),
     pgo:start_pool(default, [{size, 1}, {postgres, [{database, "test"}, {user, "test"}]}]).
+
+bad_query_parse_test_() ->
+    {setup,
+    fun() ->
+        {ok, SupPid} = pgo_sup:start_link(),
+        {ok, PoolPid} = start_pool(),
+        {SupPid, PoolPid}
+    end,
+    fun({SupPid, PoolPid}) ->
+        supervisor:terminate_child(pgo_sup, PoolPid),
+        kill_sup(SupPid)
+    end,
+    fun({_SupPid, _PoolPid}) ->
+    [
+        ?_assertMatch({error, _}, pgo:query(default, "select $1", []))
+    ]
+    end}.
 
 select_null_test_() ->
     {setup,
@@ -142,7 +160,7 @@ types_test_() ->
         },
         {"Insert uuid",
             ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
-                [7, null, null, null, {uuid, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>}, null, null]))
+                [7, null, null, null, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>, null, null]))
         },
         {"Insert bytea",
             ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
@@ -158,7 +176,7 @@ types_test_() ->
         },
         {"Insert all",
             ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
-                [10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, {uuid, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>}, <<"deadbeef">>, 3.1415]))
+                [10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>, <<"deadbeef">>, 3.1415]))
         },
         {"Select values (10)",
             ?_test(begin
@@ -179,7 +197,7 @@ types_test_() ->
                 #pg_result{command=select, rows=[Row]} = R,
                 ?assertMatch({10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, _UUID, <<"deadbeef">>, _Float}, Row),
                 {10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, UUID, <<"deadbeef">>, Float} = Row,
-                ?assertEqual(<<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>, UUID),
+                ?assertMatch(<<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>, UUID),
                 ?assert(Float > 3.1413),
                 ?assert(Float < 3.1416)
             end)
@@ -199,16 +217,16 @@ types_test_() ->
                 R = pgo:query(default, "select * from types where id = $1", [11]),
                 ?assertMatch(#pg_result{command=select, rows=[_Row]}, R),
                 #pg_result{command=select, rows=[Row]} = R,
-                ?assertEqual({11, null, null, null, null, <<"deadbeef">>, null}, Row)
+                ?assertMatch({11, null, null, null, null, <<"deadbeef">>, null}, Row)
             end)
         },
      {"Insert uuid 0",
             ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
-                [199, null, null, null, {uuid, <<"00000000-0000-0000-0000-000000000000">>}, null, null]))
+                [199, null, null, null, <<"00000000-0000-0000-0000-000000000000">>, null, null]))
         },
         {"Insert uuid in lowercase",
             ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
-                [16, null, null, null, {uuid, <<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>}, null, null]))
+                [16, null, null, null, <<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>, null, null]))
         },
         {"Insert uc uuid in text column",
             ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
@@ -223,8 +241,8 @@ types_test_() ->
                 R = pgo:query(default, "select a_text from types where id IN ($1, $2) order by id", [17, 18]),
                 ?assertMatch(#pg_result{command=select, rows=[_Row17, _Row18]}, R),
                 #pg_result{command=select, rows=[Row17, Row18]} = R,
-                ?assertEqual({<<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>}, Row17),
-                ?assertEqual({<<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>}, Row18)
+                ?assertMatch({<<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>}, Row17),
+                ?assertMatch({<<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>}, Row18)
             end)
         }
         ]
@@ -243,103 +261,80 @@ text_types_test_() ->
      end,
      fun({_SupPid, _PoolPid}) ->
              [
-              ?_assertEqual(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select 'foo'::text")),
-              ?_assertEqual(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select $1::text", [<<"foo">>])),
-              ?_assertEqual(#pg_result{command=select,rows=[{<<"foo         ">>}]}, pgo:query("select 'foo'::char(12)")),
-              ?_assertEqual(#pg_result{command=select,rows=[{<<"foo         ">>}]}, pgo:query("select $1::char(12)", [<<"foo">>])),
-              ?_assertEqual(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select 'foo'::varchar(12)")),
-              ?_assertEqual(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select $1::varchar(12)", [<<"foo">>])),
-              ?_assertEqual(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select 'foobar'::char(3)")),
-              ?_assertEqual(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select $1::char(3)", [<<"foobar">>]))
+              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select 'foo'::text")),
+              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select $1::text", [<<"foo">>])),
+              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo         ">>}]}, pgo:query("select 'foo'::char(12)")),
+              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo         ">>}]}, pgo:query("select $1::char(12)", [<<"foo">>])),
+              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select 'foo'::varchar(12)")),
+              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select $1::varchar(12)", [<<"foo">>])),
+              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select 'foobar'::char(3)")),
+              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select $1::char(3)", [<<"foobar">>]))
              ]
      end
     }.
-
-array_types_test_() ->
-    {setup,
-     fun() ->
-             {ok, SupPid} = pgo_sup:start_link(),
-             {ok, PoolPid} = start_pool(),
-             {SupPid, PoolPid}
-     end,
-     fun({SupPid, PoolPid}) ->
-             supervisor:terminate_child(pgo_sup, PoolPid),
-             kill_sup(SupPid)
-     end,
-     fun({_SupPid, _PoolPid}) ->
-             [
-              ?_assertEqual(#pg_result{command=select,rows=[{{array,[{array,[1,2]},{array, [3,4]}]}}]},
-                            pgo:query("select $1::int[]", [{array, [{array, [1,2]}, {array, [3,4]}]}])),
-              ?_assertEqual(#pg_result{command=select,rows=[{{array,[<<"2">>,<<"3">>]}}]},
-                            pgo:query("select $1::bytea[]", [{array, [<<"2">>, <<"3">>]}]))
-             ]
-     end
-    }.
-
-
 
 %% array_types_test_() ->
 %%     {setup,
-%%         fun() ->
-%%                 {ok, SupPid} = saap_sup:start_link(),
-%%                 Conn = pgsql_connection:open("test", "test"),
-%%                 {SupPid, Conn}
-%%         end,
-%%         fun({SupPid, Conn}) ->
-%%                 pgsql_connection:close(Conn),
-%%                 kill_sup(SupPid)
-%%         end,
-%%         fun({_SupPid, Conn}) ->
-%%                 [
-%%                     ?_assertEqual({{select,1},[{{array,[<<"2">>,<<"3">>]}}]}, pgsql_connection:query("select '{2,3}'::text[]", Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[2,3]}}]}, pgsql_connection:query("select '{2,3}'::int[]", Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[]}}]}, pgsql_connection:query("select '{}'::text[]", Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[]}}]}, pgsql_connection:query("select '{}'::int[]", Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[]}}]}, pgsql_connection:query("select ARRAY[]::text[]", Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[<<"2">>,<<"3">>]}}]}, pgsql_connection:extended_query("select $1::text[]", ["{\"2\", \"3\"}"], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[<<"2">>,<<"3">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, ["2", "3"]}], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[<<"2">>,<<"3">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [<<"2">>, <<"3">>]}], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[<<"2,3">>,<<"4">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [<<"2,3">>, <<"4">>]}], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[<<"2,,3">>,<<"4">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [<<"2,,3">>, <<"4">>]}], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[<<"2\"3">>,<<"4">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [<<"2\"3">>, <<"4">>]}], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[<<"2\",,\"3">>,<<"4">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [<<"2\",,\"3">>, <<"4">>]}], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[<<"2'3">>,<<"4">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [<<"2'3">>, <<"4">>]}], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[<<"2\\3">>,<<"4">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [<<"2\\3">>, <<"4">>]}], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[<<"2">>,<<"3">>]}}]}, pgsql_connection:extended_query("select $1::bytea[]", [{array, [<<"2">>, <<"3">>]}], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[<<"2  ">>,<<"3  ">>]}}]}, pgsql_connection:extended_query("select $1::char(3)[]", [{array, [<<"2">>, <<"3">>]}], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[<<"2">>,<<"3">>]}}]}, pgsql_connection:extended_query("select $1::varchar(3)[]", [{array, [<<"2">>, <<"3">>]}], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[{array,[<<"2">>]},{array, [<<"3">>]}]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [{array, [<<"2">>]}, {array, [<<"3">>]}]}], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[{array,[1,2]},{array, [3,4]}]}}]}, pgsql_connection:extended_query("select $1::int[]", [{array, [{array, [1,2]}, {array, [3,4]}]}], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[]}}]}, pgsql_connection:extended_query("select '{}'::text[]", [], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[]}}]}, pgsql_connection:extended_query("select '{}'::int[]", [], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[]}}]}, pgsql_connection:extended_query("select ARRAY[]::text[]", [], Conn)),
+%%      fun() ->
+%%              {ok, SupPid} = pgo_sup:start_link(),
+%%              {ok, PoolPid} = start_pool(),
+%%              {SupPid, PoolPid}
+%%      end,
+%%      fun({SupPid, PoolPid}) ->
+%%              supervisor:terminate_child(pgo_sup, PoolPid),
+%%              kill_sup(SupPid)
+%%      end,
+%%      fun({_SupPid, _PoolPid}) ->
+%%              [
+                    %% ?_assertEqual({{select,1},[{{array,[<<"2">>,<<"3">>]}}]}, pgsql_connection:query("select '{2,3}'::text[]", Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[2,3]}}]}, pgsql_connection:query("select '{2,3}'::int[]", Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[]}}]}, pgsql_connection:query("select '{}'::text[]", Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[]}}]}, pgsql_connection:query("select '{}'::int[]", Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[]}}]}, pgsql_connection:query("select ARRAY[]::text[]", Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[<<"2">>,<<"3">>]}}]}, pgsql_connection:extended_query("select $1::text[]", ["{\"2\", \"3\"}"], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[<<"2">>,<<"3">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, ["2", "3"]}], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[<<"2">>,<<"3">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [<<"2">>, <<"3">>]}], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[<<"2,3">>,<<"4">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [<<"2,3">>, <<"4">>]}], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[<<"2,,3">>,<<"4">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [<<"2,,3">>, <<"4">>]}], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[<<"2\"3">>,<<"4">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [<<"2\"3">>, <<"4">>]}], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[<<"2\",,\"3">>,<<"4">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [<<"2\",,\"3">>, <<"4">>]}], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[<<"2'3">>,<<"4">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [<<"2'3">>, <<"4">>]}], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[<<"2\\3">>,<<"4">>]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [<<"2\\3">>, <<"4">>]}], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[<<"2">>,<<"3">>]}}]}, pgsql_connection:extended_query("select $1::bytea[]", [{array, [<<"2">>, <<"3">>]}], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[<<"2  ">>,<<"3  ">>]}}]}, pgsql_connection:extended_query("select $1::char(3)[]", [{array, [<<"2">>, <<"3">>]}], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[<<"2">>,<<"3">>]}}]}, pgsql_connection:extended_query("select $1::varchar(3)[]", [{array, [<<"2">>, <<"3">>]}], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[{array,[<<"2">>]},{array, [<<"3">>]}]}}]}, pgsql_connection:extended_query("select $1::text[]", [{array, [{array, [<<"2">>]}, {array, [<<"3">>]}]}], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[{array,[1,2]},{array, [3,4]}]}}]}, pgsql_connection:extended_query("select $1::int[]", [{array, [{array, [1,2]}, {array, [3,4]}]}], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[]}}]}, pgsql_connection:extended_query("select '{}'::text[]", [], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[]}}]}, pgsql_connection:extended_query("select '{}'::int[]", [], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[]}}]}, pgsql_connection:extended_query("select ARRAY[]::text[]", [], Conn)),
 
-%%                     ?_assertEqual({{select,1},[{{array,[{array,[<<"2">>]},{array, [<<"3">>]}]}}]}, pgsql_connection:query("select '{{\"2\"}, {\"3\"}}'::text[][]", Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[{array,[1,2]}, {array, [3,4]}]}}]}, pgsql_connection:query("select ARRAY[ARRAY[1,2], ARRAY[3,4]]", Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[]}}]}, pgsql_connection:extended_query("select $1::bytea[]", [{array, []}], Conn)),
-%%                     ?_assertEqual({{select,1},[{{array,[]},{array,[<<"foo">>]}}]}, pgsql_connection:extended_query("select $1::bytea[], $2::bytea[]", [{array, []}, {array, [<<"foo">>]}], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[{array,[<<"2">>]},{array, [<<"3">>]}]}}]}, pgsql_connection:query("select '{{\"2\"}, {\"3\"}}'::text[][]", Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[{array,[1,2]}, {array, [3,4]}]}}]}, pgsql_connection:query("select ARRAY[ARRAY[1,2], ARRAY[3,4]]", Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[]}}]}, pgsql_connection:extended_query("select $1::bytea[]", [{array, []}], Conn)),
+                    %% ?_assertEqual({{select,1},[{{array,[]},{array,[<<"foo">>]}}]}, pgsql_connection:extended_query("select $1::bytea[], $2::bytea[]", [{array, []}, {array, [<<"foo">>]}], Conn)),
 
-%%                     ?_assertEqual({{select,1},[{{array,[1,2]}}]}, pgsql_connection:query("select ARRAY[1,2]::int[]", Conn)),
-%%                     {timeout, 20, ?_test(
-%%                         begin
-%%                                 {{create, table}, []} = pgsql_connection:query("create temporary table tmp (id integer primary key, ints integer[])", Conn),
-%%                                 Array = lists:seq(1,1000000),
-%%                                 R = pgsql_connection:extended_query("insert into tmp(id, ints) values($1, $2)", [1, {array, Array}], Conn),
-%%                                 ?assertEqual({{insert, 0, 1}, []}, R)
-%%                         end)},
-%%                     ?_test(
-%%                         begin
-%%                                 {{create, table}, []} = pgsql_connection:query("create temporary table tmp2 (id integer primary key, bins bytea[])", Conn),
-%%                                 R = pgsql_connection:extended_query("insert into tmp2(id, bins) values($1, $2)", [1, {array, [<<2>>, <<3>>]}], Conn),
-%%                                 ?assertEqual({{insert, 0, 1}, []}, R),
-%%                                 R2 = pgsql_connection:extended_query("insert into tmp2(id, bins) values($1, $2)", [2, {array, [<<16#C2,1>>]}], Conn),
-%%                                 ?assertEqual({{insert, 0, 1}, []}, R2),
-%%                                 R3 = pgsql_connection:extended_query("insert into tmp2(id, bins) values($1, $2)", [3, {array, [<<2,0,3>>, <<4>>]}], Conn),
-%%                                 ?assertEqual({{insert, 0, 1}, []}, R3)
-%%                         end)
-%%                 ]
-%%         end
-%%     }.
+                    %% ?_assertEqual({{select,1},[{{array,[1,2]}}]}, pgsql_connection:query("select ARRAY[1,2]::int[]", Conn)),
+                    %% {timeout, 20, ?_test(
+                    %%     begin
+                    %%             {{create, table}, []} = pgsql_connection:query("create temporary table tmp (id integer primary key, ints integer[])", Conn),
+                    %%             Array = lists:seq(1,1000000),
+                    %%             R = pgsql_connection:extended_query("insert into tmp(id, ints) values($1, $2)", [1, {array, Array}], Conn),
+                    %%             ?assertEqual({{insert, 0, 1}, []}, R)
+                    %%     end)},
+                    %% ?_test(
+                    %%     begin
+                    %%             {{create, table}, []} = pgsql_connection:query("create temporary table tmp2 (id integer primary key, bins bytea[])", Conn),
+                    %%             R = pgsql_connection:extended_query("insert into tmp2(id, bins) values($1, $2)", [1, {array, [<<2>>, <<3>>]}], Conn),
+                    %%             ?assertEqual({{insert, 0, 1}, []}, R),
+                    %%             R2 = pgsql_connection:extended_query("insert into tmp2(id, bins) values($1, $2)", [2, {array, [<<16#C2,1>>]}], Conn),
+                    %%             ?assertEqual({{insert, 0, 1}, []}, R2),
+                    %%             R3 = pgsql_connection:extended_query("insert into tmp2(id, bins) values($1, $2)", [3, {array, [<<2,0,3>>, <<4>>]}], Conn),
+                    %%             ?assertEqual({{insert, 0, 1}, []}, R3)
+                    %%     end)
+           %%      ]
+    %%     end
+    %% }.
 
 %% % https://github.com/semiocast/pgsql/issues/28
 %% quoted_array_values_test_() ->
@@ -908,50 +903,55 @@ array_types_test_() ->
 %%     ]
 %%     end}.
 
-%% json_types_test_() ->
-%%     {setup,
-%%      fun() ->
-%%              {ok, SupPid} = pgo_sup:start_link(),
-%%              {ok, PoolPid} = start_pool(),
-%%              {SupPid, PoolPid}
-%%      end,
-%%      fun({SupPid, PoolPid}) ->
-%%              supervisor:terminate_child(pgo_sup, PoolPid),
-%%              kill_sup(SupPid)
-%%      end,
-%%      fun({_SupPid, _PoolPid}) ->
-%%              [?_test(begin
-%%                          #pg_result{command=create} = pgo:query(default, "create temporary table tmp (id integer primary key, a_json json, b_json json)"),
-%%                         #pg_result{command=insert} = pgo:query(default, "insert into tmp (id, b_json) values ($1, $2)",
-%%                                                               [2, {json, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>}]),
-%%                         ?assertMatch(#pg_result{command=select,
-%%                                                 rows=[{[#{<<"a">> := <<"foo">>},
-%%                                                         #{<<"b">> := <<"bar">>},
-%%                                                         #{<<"c">> := <<"baz">>}]}]},
-%%                                      pgo:query(default, "select '[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]'::json")),
-%%                          ?assertMatch(#pg_result{command=select,
-%%                                                  rows=[{[#{<<"a">> := <<"foo">>},
-%%                                                          #{<<"b">> := <<"bar">>},
-%%                                                          #{<<"c">> := <<"baz">>}]}]},
-%%                                       pgo:query(default, "select b_json from tmp where id = 2"))
-%%                      end),
-%%               ?_test(begin
-%%                          #pg_result{command=create} =
-%%                              pgo:query(default, "create temporary table tmp_b (id integer primary key, a_json jsonb, b_json json)"),
-%%                          ?assertMatch(#pg_result{command=select,rows=[{[#{<<"a">> := <<"foo">>},
-%%                                                                         #{<<"b">> := <<"bar">>},
-%%                                                                         #{<<"c">> := <<"baz">>}]}]},
-%%                                       pgo:query(default, "select '[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]'::jsonb")),
-%%                          #pg_result{command=insert} = pgo:query(default, "insert into tmp_b (id, a_json) values ($1, $2)",
-%%                                                                [1, {jsonb, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>}]),
-%%                          ?assertMatch(#pg_result{command=select,rows=[{[#{<<"a">> := <<"foo">>},
-%%                                                                         #{<<"b">> := <<"bar">>},
-%%                                                                         #{<<"c">> := <<"baz">>}]}]},
-%%                                       pgo:query(default, "select a_json from tmp_b where id = 1"))
-%%                      end)
-%%             ]
-%%     end
-%%     }.
+json_types_test_() ->
+    {setup,
+     fun() ->
+             {ok, SupPid} = pgo_sup:start_link(),
+             {ok, PoolPid} = start_pool(),
+             {SupPid, PoolPid}
+     end,
+     fun({SupPid, PoolPid}) ->
+             supervisor:terminate_child(pgo_sup, PoolPid),
+             kill_sup(SupPid)
+     end,
+     fun({_SupPid, _PoolPid}) ->
+             [?_test(begin
+                         #pg_result{command=create} = pgo:query(default, "create temporary table tmp (id integer primary key, a_json json, b_json json)"),
+                        #pg_result{command=insert} = pgo:query(default, "insert into tmp (id, b_json) values ($1, $2)",
+                                                              [2, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>]),
+                         #pg_result{command=insert} = pgo:query(default, "insert into tmp (id, b_json) values ($1, $2)",
+                                                              [3, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>]),
+                        #pg_result{command=select, rows=Rows} =
+                             pgo:query(default, "select '[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]'::json"),
+                         ?assertMatch([[#{<<"a">> := <<"foo">>},
+                                       #{<<"b">> := <<"bar">>},
+                                       #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {{json, R}} <- Rows]),
+                         #pg_result{command=select, rows=Rows2} =
+                             pgo:query(default, "select b_json from tmp where id = 2"),
+                         ?assertMatch([[#{<<"a">> := <<"foo">>},
+                                        #{<<"b">> := <<"bar">>},
+                                        #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {{json, R}} <- Rows2])
+                     end),
+              ?_test(begin
+                         #pg_result{command=create} =
+                             pgo:query(default, "create temporary table tmp_b (id integer primary key, a_json jsonb, b_json json)"),
+                         #pg_result{command=select,rows=Rows} =
+                             pgo:query(default, "select '[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]'::jsonb"),
+                         ?assertMatch([[#{<<"a">> := <<"foo">>},
+                                        #{<<"b">> := <<"bar">>},
+                                        #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {{jsonb, R}} <- Rows]),
+
+                         #pg_result{command=insert} = pgo:query(default, "insert into tmp_b (id, a_json) values ($1, $2)",
+                                                                [1, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>]),
+                         #pg_result{command=select, rows=Rows1} = pgo:query(default, "select a_json from tmp_b where id = 1"),
+                         ?assertMatch([[#{<<"a">> := <<"foo">>},
+                                        #{<<"b">> := <<"bar">>},
+                                        #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {{jsonb, R}} <- Rows1])
+
+                     end)
+            ]
+    end
+    }.
 
 
 %% postgression_ssl_test_() ->

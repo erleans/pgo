@@ -95,6 +95,7 @@
 -define(REGTYPEOID, 2206).
 -define(REGTYPEARRAYOID, 2211).
 -define(UUIDOID, 2950). % not #defined
+-define(UUIDARRAYOID, 2951). % not #defined
 -define(TSVECTOROID, 3614).
 -define(GTSVECTOROID, 3642).
 -define(TSQUERYOID, 3615).

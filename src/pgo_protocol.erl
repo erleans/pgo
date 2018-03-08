@@ -1,5 +1,4 @@
-%%% @doc Module for packet encoding and decoding.
-%%%
+%% Mostly from the pgsql_protocol module in https://github.com/semiocast/pgsql
 -module(pgo_protocol).
 
 -include("pgo_internal.hrl").
@@ -131,33 +130,47 @@ encode_bind_message(PortalName, StatementName, Parameters, ParametersDataTypes, 
 -spec encode_parameter(any(), pgsql_oid() | undefined, pgsql_oid_map(), boolean()) -> binary().
 encode_parameter(null, _Type, _OIDMap, _IntegerDateTimes) ->
     <<-1:32/integer>>;
-encode_parameter(UUID = <<_:36/binary>>, ?UUIDOID, _OIDMap, _IntegerDateTimes) ->
-    encode_uuid(UUID);
-encode_parameter({uuid, UUID}, ?UUIDOID, _OIDMap, _IntegerDateTimes) ->
+encode_parameter(Float, ?FLOAT8OID, _OIDMap, _IntegerDateTimes) ->
+    <<8:32/integer, Float:1/big-float-unit:64>>;
+encode_parameter(Integer, ?INT2OID, _OIDMap, _IntegerDateTimes) when is_integer(Integer) ->
+    <<2:32/integer, Integer:16>>;
+encode_parameter(Integer, ?INT4OID, _OIDMap, _IntegerDateTimes) when is_integer(Integer) ->
+    <<4:32/integer, Integer:32>>;
+encode_parameter(UUID, ?UUIDOID, _OIDMap, _IntegerDateTimes) ->
     encode_uuid(UUID);
 encode_parameter(Binary, ?TEXTOID, _OIDMap, _IntegerDateTimes) when is_binary(Binary) ->
     Text = unicode:characters_to_binary(Binary, utf8),
     Size = byte_size(Text),
     <<Size:32/integer, Text/binary>>;
-encode_parameter(Binary, _Type, _OIDMap, _IntegerDateTimes) when is_binary(Binary) ->
+encode_parameter({array, []}, ?JSONBOID, _OIDMap, _IntegerDateTimes) ->
+    Binary = <<"{}">>,
     Size = byte_size(Binary),
-    <<Size:32/integer, Binary/binary>>;
+    <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
 encode_parameter({array, List}, Type, OIDMap, IntegerDateTimes) ->
     encode_array(List, Type, OIDMap, IntegerDateTimes);
+encode_parameter(Binary, ?JSONBOID, _OIDMap, _IntegerDateTimes) when is_binary(Binary) ->
+    Size = byte_size(Binary),
+    <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
+encode_parameter({jsonb, Binary}, ?JSONBOID, _OIDMap, _IntegerDateTimes) ->
+    Size = byte_size(Binary),
+    <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
+encode_parameter(Binary, ?JSONBOID, _OIDMap, _IntegerDateTimes) ->
+    Size = byte_size(Binary),
+    <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
 encode_parameter({json, Binary}, _Type, _OIDMap, _IntegerDateTimes) ->
+    Size = byte_size(Binary),
+    <<Size:32/integer, Binary/binary>>;
+encode_parameter(Binary, ?JSONOID, _OIDMap, _IntegerDateTimes) ->
     Size = byte_size(Binary),
     <<Size:32/integer, Binary/binary>>;
 encode_parameter({jsonb, Binary}, _Type, _OIDMap, _IntegerDateTimes) ->
     Size = byte_size(Binary),
     <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
-encode_parameter({uuid, UUID}, _Type, _OIDMap, _IntegerDateTimes) ->
-    encode_uuid(UUID);
+encode_parameter(Binary, _Type, _OIDMap, _IntegerDateTimes) when is_binary(Binary) ->
+    Size = byte_size(Binary),
+    <<Size:32/integer, Binary/binary>>;
 encode_parameter(Float, _Type, _OIDMap, _IntegerDateTimes) when is_float(Float) ->
     <<4:32/integer, Float:1/big-float-unit:32>>;
-%% encode_parameter(Float, _Type, _OIDMap, _IntegerDateTimes) when is_float(Float) ->
-%%     <<8:32/integer, Float:1/big-float-unit:64>>;
-encode_parameter({bigint, Integer}, _Type, _OIDMap, _IntegerDateTimes) ->
-    <<8:32/integer, Integer:64>>;
 encode_parameter(Integer, ?INT8OID, _OIDMap, _IntegerDateTimes) ->
     <<8:32/integer, Integer:64>>;
 encode_parameter(Integer, _Type, _OIDMap, _IntegerDateTimes) when is_integer(Integer) ->
@@ -204,6 +217,8 @@ encode_array(Elements, ArrayType, OIDMap, IntegerDateTimes) ->
     ArrayElements = encode_array_elements(Elements, ElementType, OIDMap, IntegerDateTimes, []),
     encode_array_binary(ArrayElements, ElementType).
 
+encode_uuid(<<>>) ->
+    <<-1:32/integer>>;
 encode_uuid(null) ->
     <<-1:32/integer>>;
 encode_uuid(U) when is_integer(U) ->
@@ -217,6 +232,7 @@ encode_uuid(U) ->
 
 array_type_to_element_type(undefined, _OIDMap) -> undefined;
 array_type_to_element_type(?CIDRARRAYOID, _OIDMap) -> ?CIDROID;
+array_type_to_element_type(?UUIDARRAYOID, _OIDMap) -> ?UUIDOID;
 array_type_to_element_type(?JSONBOID, _OIDMap) -> ?JSONBOID;
 array_type_to_element_type(?JSONOID, _OIDMap) -> ?JSONOID;
 array_type_to_element_type(?BOOLARRAYOID, _OIDMap) -> ?BOOLOID;
@@ -377,9 +393,8 @@ encode_cancel_message(ProcID, Secret) ->
 %%
 -spec encode_string_message(byte(), iodata()) -> binary().
 encode_string_message(Identifier, String) ->    
-    StringBin = iolist_to_binary(String),
-    MessageLen = byte_size(StringBin) + 5,
-    <<Identifier, MessageLen:32/integer, StringBin/binary, 0>>.
+    MessageLen = iolist_size(String) + 5,
+    [<<Identifier, MessageLen:32/integer>>, String, <<0>>].
 
 %%--------------------------------------------------------------------
 %% @doc Decode a message.

@@ -1,3 +1,4 @@
+%% Mostly from the pgsql_connection module in https://github.com/semiocast/pgsql
 -module(pgo_handler).
 
 -include("pgo_internal.hrl").
@@ -89,12 +90,12 @@ pgsql_simple_query_loop(Result0, Acc, QueryOptions, Pool, Socket) ->
             AccRows1 = [DecodedRow | AccRows0],
             pgsql_simple_query_loop({rows, Fields, AccRows1}, Acc, QueryOptions, Pool, Socket);
         {ok, #command_complete{command_tag = Tag}} ->
-            DecodeTag = decode_tag(Tag),
+            {Command, NumRows} = decode_tag(Tag),
             ResultRows = case Result0 of
                 {rows, _Descs, AccRows} -> lists:reverse(AccRows);
                 [] -> []
             end,
-            Acc1 = [#pg_result{command=element(1, DecodeTag), rows=ResultRows} | Acc],
+            Acc1 = [#pg_result{command=Command, num_rows=NumRows, rows=ResultRows} | Acc],
             pgsql_simple_query_loop([], Acc1, QueryOptions, Pool, Socket);
         {ok, #empty_query_response{}} ->
             pgsql_simple_query_loop(Result0, Acc, QueryOptions, Pool, Socket);
@@ -374,8 +375,9 @@ pgsql_extended_query_receive_loop0(#data_row{values = Values}, {rows, Fields} = 
     DecodedRow = pgo_protocol:decode_row(Fields, Values, Pool, QueryOptions),
     pgsql_extended_query_receive_loop(LoopState, Fun, [Fun(DecodedRow, Fields) | Acc0], QueryOptions, Pool, Socket);
 pgsql_extended_query_receive_loop0(#command_complete{command_tag = Tag}, _LoopState, Fun, Acc0, QueryOptions, Pool, Socket) ->
-    DecodeTag = decode_tag(Tag),
-    pgsql_extended_query_receive_loop({result, #pg_result{command=element(1, DecodeTag),
+    {Command, NumRows} = decode_tag(Tag),
+    pgsql_extended_query_receive_loop({result, #pg_result{command=Command,
+                                                          num_rows=NumRows,
                                                           rows=lists:reverse(Acc0)}}, Fun, Acc0, QueryOptions, Pool, Socket);
 pgsql_extended_query_receive_loop0(#portal_suspended{}, LoopState, Fun, Acc0, QueryOptions, Pool, Socket={_,S}) ->
     ExecuteMessage = pgo_protocol:encode_execute_message("", 0),
@@ -394,8 +396,8 @@ pgsql_extended_query_receive_loop0(#error_response{fields = Fields}, LoopState, 
     % - when we asked for the statement description
     % - when MaxRowsStep > 0
     NeedSync = case LoopState of
-                   {parse_complete_with_params, _Mode, _Args} -> true;
-                   {parameter_description_with_params, _Mode, _Parameters} -> true;
+                   {parse_complete_with_params, _Args} -> true;
+                   {parameter_description_with_params, _Parameters} -> true;
                    _ -> false
                end,
     case NeedSync of
@@ -410,7 +412,8 @@ pgsql_extended_query_receive_loop0(#error_response{fields = Fields}, LoopState, 
 pgsql_extended_query_receive_loop0(#ready_for_query{} = Message, _LoopState, _Fun, _Acc0, _QueryOptions, _Pool, _Socket) ->
     Result = {error, {unexpected_message, Message}},
     Result;
-pgsql_extended_query_receive_loop0(Message, _LoopState, _Fun, _Acc0, _QueryOptions, _Pool, Socket) ->
+pgsql_extended_query_receive_loop0(Message, _LoopState, _Fun, _Acc0, _QueryOptions, _Pool, Socket={_,S}) ->
+    gen_tcp:send(S, pgo_protocol:encode_sync_message()),
     Error = {error, {unexpected_message, Message}},
     flush_until_ready_for_query(Error, Socket).
 
@@ -430,8 +433,8 @@ flush_until_ready_for_query(Result, Socket) ->
 %% @doc Receive a single packet (in passive mode). Notifications and
 %% notices are broadcast to subscribers.
 %%
-receive_message({_, Socket}) ->
-    case gen_tcp:recv(Socket, ?MESSAGE_HEADER_SIZE) of
+receive_message(S={_, Socket}) ->
+    Result0 = case gen_tcp:recv(Socket, ?MESSAGE_HEADER_SIZE) of
         {ok, <<Code:8/integer, Size:32/integer>>} ->
             Payload = Size - 4,
             case Payload of
@@ -446,6 +449,13 @@ receive_message({_, Socket}) ->
             end;
         {error, _} = ErrorRecvPacketHeader ->
             ErrorRecvPacketHeader
+    end,
+    case Result0 of
+        {ok, #notification_response{} = _Notification} ->
+            receive_message(S);
+        {ok, #notice_response{} = _Notice} ->
+            receive_message(S);
+        _ -> Result0
     end.
 
 %%--------------------------------------------------------------------
