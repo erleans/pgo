@@ -4,6 +4,8 @@
 
 -export([start_link/6,
          ping/2,
+         stop/2,
+         disconnect/3,
          pool_name/1,
          reload_types/1,
          break/2]).
@@ -40,6 +42,15 @@ pool_name({_Pid, Holder}) ->
 ping({Pid, Holder}, _Conn) ->
     gen_statem:cast(Pid, {ping, Holder}).
 
+-spec stop(pgo_pool:ref(), pgo_pool:conn()) -> ok.
+stop({Pid, Holder}, _Conn) ->
+    gen_statem:cast(Pid, {stop, Holder}).
+
+-spec disconnect(pgo_pool:ref(), string(), pg_pool:conn()) -> ok.
+disconnect({Pid, Holder}, _Err, _Conn) ->
+    %% maybe log Err?
+    gen_statem:cast(Pid, {disconnect, Holder}).
+
 -spec reload_types(pgo_pool:conn()) -> ok.
 reload_types(#conn{owner=Pid}) ->
     gen_statem:call(Pid, reload_types).
@@ -71,7 +82,7 @@ disconnected(EventType, _, Data=#data{broker=Broker,
                                                                   ; EventType =:= state_timeout ->
     try pgo_handler:pgsql_open(Broker, DBOptions) of
         {ok, Conn} ->
-            Holder = (catch pgo_pool:update(Pool, Queue, Conn)),
+            Holder = pgo_pool:update(Pool, Queue, Conn),
             {_, B1} = backoff:succeed(B),
             {next_state, enqueued, Data#data{conn=Conn, holder=Holder, backoff=B1}};
         _Error ->
@@ -107,6 +118,17 @@ handle_event(cast, {ping, Holder}, Data=#data{pool=Pool,
     %% TODO: do ping
     NewHolder = pgo_pool:update(Pool, Queue, Conn),
     {keep_state, Data#data{holder=NewHolder}};
+handle_event(cast, {stop, Holder}, Data=#data{holder=Holder,
+                                              conn=Conn}) ->
+    pgo_handler:close(Conn),
+    {stop, Data#data{conn=undefined,
+                     holder=undefined}};
+handle_event(cast, {disconnect, Holder}, Data=#data{holder=Holder,
+                                                    conn=Conn}) ->
+    pgo_handler:close(Conn),
+    {next_state, disconnected, Data#data{conn=undefined,
+                                         holder=undefined},
+     [{next_event, internal, connect}]};
 handle_event(cast, {break, Holder}, Data=#data{holder=Holder,
                                                conn=Conn}) ->
     pgo_handler:close(Conn),
@@ -122,6 +144,8 @@ handle_event(info, {'EXIT', Socket, _Reason}, Data=#data{conn=Socket}) ->
      [{next_event, internal, connect}]}.
 
 %% @private
+terminate(_Reason, _, #data{conn=undefined}) ->
+    ok;
 terminate(_Reason, _, #data{conn=Conn}) ->
     pgo_handler:close(Conn),
     ok.

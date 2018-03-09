@@ -7,7 +7,8 @@
          checkin/3,
          disconnect/4,
          stop/4,
-         update/3]).
+         update/3,
+         format_error/1]).
 
 -export([init/1,
          handle_call/3,
@@ -73,6 +74,13 @@ update(Pool, Ref, State) ->
     checkin_holder(Holder, Pool, State, {checkin, Ref, Now}),
     Holder.
 
+format_error(none_available) ->
+    "connection not available";
+format_error(none_available_no_queuing) ->
+    "connection not available and queuing is disabled";
+format_error(client_timeout) ->
+    "client timed out".
+
 init({Pool, Opts}) ->
     process_flag(trap_exit, true),
     Queue = ets:new(?MODULE, [protected, ordered_set]),
@@ -95,8 +103,7 @@ handle_call({checkout, Now, MaybeQueue}, From, {busy, Queue, _} = Busy) ->
         ets:insert(Queue, {{Now, erlang:unique_integer(), From}}),
         {noreply, Busy};
       false ->
-        Message = "connection not available and queuing is disabled",
-        {reply, {error, Message}, Busy}
+        {reply, {error, none_available_no_queuing}, Busy}
     end;
 handle_call({checkout, _Now, _MaybeQueue} = Checkout, From, Ready) ->
     {ready, Queue, Codel} = Ready,
@@ -126,13 +133,10 @@ handle_info({'ETS-TRANSFER', Holder, _, {Msg, Queue, Extra}}, {_, Queue, _} = Da
 
 handle_info({timeout, Deadline, {Queue, Holder, _Pid, _Len}}, {_, Queue, _} = Data) ->
     %% Check that timeout refers to current holder (and not previous)
-    case
-        ets:lookup_element(Holder, ?HOLDER_KEY, 3)
-    of
+    case ets:lookup_element(Holder, ?HOLDER_KEY, 3) of
         Deadline ->
             ets:update_element(Holder, ?HOLDER_KEY, {3, undefined}),
-            Message = "client timed out",
-            disconnect_holder(Holder, {error, Message});
+            disconnect_holder(Holder, {error, client_timeout});
         _ ->
             ok
     end,
@@ -259,7 +263,7 @@ go(Delay, From, Time, Holder, Queue, Codel=#{delay := Min}) ->
     end.
 
 drop(_Delay, From) ->
-    gen_server:reply(From, {error, "connection not available"}).
+    gen_server:reply(From, {error, none_available}).
 
 abs_timeout(Now, Opts) ->
     case proplists:get_value(timeout, Opts, ?TIMEOUT) of
@@ -322,8 +326,8 @@ disconnect_holder(Holder, Err) ->
 stop_holder(Holder, Err) ->
     delete_holder(Holder, Err).
 
-delete_holder(Holder, _Err) ->
-    [{_, _Conn, Deadline, _State}] = ets:lookup(Holder, ?HOLDER_KEY),
+delete_holder(Holder, Err) ->
+    [{_, Conn, Deadline, State}] = ets:lookup(Holder, ?HOLDER_KEY),
     ets:delete(Holder),
-    cancel_deadline(Deadline).
-    %% disconnect({Conn, Holder}, Err, State, []).
+    cancel_deadline(Deadline),
+    pgo_connection:disconnect({Conn, Holder}, Err, State).
