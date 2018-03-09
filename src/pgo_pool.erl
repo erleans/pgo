@@ -13,6 +13,8 @@
          handle_call/3,
          handle_info/2]).
 
+-include("pgo_internal.hrl").
+
 -define(TIMEOUT, 5000).
 -define(QUEUE, true).
 -define(QUEUE_TARGET, 50).
@@ -20,6 +22,15 @@
 -define(IDLE_INTERVAL, 1000).
 -define(TIME_UNIT, 1000).
 -define(HOLDER_KEY, '__info__').
+
+-export_type([ref/0,
+              conn/0]).
+
+-type conn() :: #conn{}.
+-type ref() :: {Pool :: pid(),
+                Ref :: reference(),
+                TimerRef :: reference() | undefined,
+                Holder :: reference()}.
 
 -ifdef(TEST).
 -export([tid/1]).
@@ -31,6 +42,7 @@ tid(Pool) ->
 start_link(Pool, Opts) ->
     gen_server:start_link({local, Pool}, ?MODULE, {Pool, Opts}, []).
 
+-spec checkout(atom(), list()) -> {ok, ref(), conn()} | {drop, any()}.
 checkout(Pool, Opts) ->
     MaybeQueue = proplists:get_value(queue, Opts, ?QUEUE),
     Now = erlang:monotonic_time(?TIME_UNIT),
@@ -62,6 +74,7 @@ update(Pool, Ref, State) ->
     Holder.
 
 init({Pool, Opts}) ->
+    process_flag(trap_exit, true),
     Queue = ets:new(?MODULE, [protected, ordered_set]),
     {ok, _} = pgo_pool_sup:start_link(Queue, Pool, Opts),
 

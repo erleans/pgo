@@ -57,13 +57,13 @@ checkout_checkin(Config) ->
     Name = ?config(pool_name, Config),
     Tid = pgo_pool:tid(Name),
 
-    {ok, Ref, {Pid, Socket}} = pgo:checkout(Name),
-    {ok, Ref1, {Pid1, Socket1}} = pgo:checkout(Name),
+    {ok, Ref, Conn={conn, _Pid, _Socket, _Pool}} = pgo:checkout(Name),
+    {ok, Ref1, Conn1={conn, _Pid1, _Socket1, _Pool}} = pgo:checkout(Name),
 
     ?UNTIL((catch ets:info(Tid, size)) =:= 8),
 
-    pgo:checkin(Ref, {Pid, Socket}),
-    pgo:checkin(Ref1, {Pid1, Socket1}),
+    pgo:checkin(Ref, Conn),
+    pgo:checkin(Ref1, Conn1),
 
     ?UNTIL((catch ets:info(Tid, size)) =:= 10),
 
@@ -73,14 +73,14 @@ checkout_break(Config) ->
     Name = ?config(pool_name, Config),
     Tid = pgo_pool:tid(Name),
 
-    {ok, _Ref, {Pid, Socket}} = pgo:checkout(Name),
-    pgo_connection:break({Pid, []}),
+    {ok, Ref, Conn={conn, Pid, Socket, _Pool}} = pgo:checkout(Name),
+    pgo_connection:break(Conn, Ref),
 
     ?UNTIL((catch ets:info(Tid, size)) =:= 1),
 
     %% verify that the connection we broke is not still in the pool
     %% but the Pid for the pgo_connection proc should be the same
-    {ok, _Ref1, {Pid1, Socket1}} = pgo:checkout(Name),
+    {ok, _Ref1, {conn, Pid1, Socket1, _Pool}} = pgo:checkout(Name),
     ?assertNotEqual(Socket, Socket1),
     ?assertEqual(Pid, Pid1),
 
@@ -90,8 +90,8 @@ checkout_kill(Config) ->
     Name = ?config(pool_name, Config),
     Tid = pgo_pool:tid(Name),
 
-    {ok, _Ref, {_Pid, Socket}} = pgo:checkout(Name),
-    {ok, _Ref1, {Pid1, _Socket1}} = pgo:checkout(Name),
+    {ok, _Ref, {conn, _Pid, Socket, _Pool}} = pgo:checkout(Name),
+    {ok, _Ref1, {conn, Pid1, _Socket1, _Pool}} = pgo:checkout(Name),
 
     erlang:exit(Socket, kill),
     ?UNTIL((catch ets:info(Tid, size)) =:= 9),

@@ -631,12 +631,7 @@ decode_error_and_notice_message_fields(Binary) ->
     decode_error_and_notice_message_fields0(Binary, []).
 
 decode_error_and_notice_message_fields0(<<0>>, Acc) ->
-  case application:get_env(pgsql, errors_as_maps) of
-    {ok, true} ->
-      {ok, maps:from_list(Acc)};
-    _ ->
-      {ok, lists:reverse(Acc)}
-  end;
+    {ok, maps:from_list(Acc)};
 
 decode_error_and_notice_message_fields0(<<FieldType, Rest0/binary>>, Acc) ->
     case decode_string(Rest0) of

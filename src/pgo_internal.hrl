@@ -1,3 +1,7 @@
+-record(conn, {owner :: pid(),
+               socket :: gen_tcp:socket(),
+               pool :: atom()}).
+
 % Backend messages
 -type pgsql_oid() :: pos_integer().
 -type pgsql_procid() :: integer().

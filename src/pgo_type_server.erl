@@ -46,16 +46,17 @@ ready(cast, {reload, RequestTime}, Data=#data{pool=Pool,
                                               db_options=DBOptions,
                                               last_reload=LastReload}) ->
     load(Pool, LastReload, RequestTime, DBOptions),
-    {keep_state, Data#data{last_reload=erlang:monotonic_time()}}.
+    {keep_state, Data#data{last_reload=erlang:monotonic_time()}};
+ready(_, _, _Data) ->
+    keep_state_and_data.
 
 terminate(_, _, #data{pool=Pool}) ->
     ets:delete(Pool).
 
 load(Pool, LastReload, RequestTime, DBOptions) when LastReload < RequestTime ->
-    {ok, Socket} = pgo_handler:pgsql_open(DBOptions),
-    #pg_result{rows=Oids} = pgo_handler:simple_query({self(),Socket}, Pool, "SELECT oid, typname FROM pg_type"),
-    unlink(Socket),
-    pgo_handler:close(Socket),
+    {ok, Conn} = pgo_handler:pgsql_open(Pool, DBOptions),
+    #pg_result{rows=Oids} = pgo_handler:simple_query(Conn, "SELECT oid, typname FROM pg_type"),
+    pgo_handler:close(Conn),
     [ets:insert(Pool, {Oid, binary_to_atom(Typename, utf8)}) || {Oid, Typename} <- Oids];
 load(_, _, _, _) ->
     ok.
