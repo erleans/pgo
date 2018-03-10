@@ -206,6 +206,10 @@
 {?ANYRANGEOID, anyrange}
 ]).
 
+-type error_field() :: severity | code | message | detail | hint | position | internal_position
+                     | internal_query | where | file | line | routine
+                     | schema | table | column | data_type | constraint | {unknown, byte()}.
+
 -record(authentication_ok, {}).
 -record(authentication_kerberos_v5, {}).
 -record(authentication_cleartext_password, {}).
@@ -251,14 +255,14 @@
 }).
 -record(empty_query_response, {}).
 -record(error_response, {
-    fields :: [pgsql_error:pgsql_error_and_mention_field()]
+    fields :: [pgsql_error:pgsql_error_and_mention_field()] | #{error_field() => binary()}
 }).
 -record(function_call_response, {
     value :: null | iodata()
 }).
 -record(no_data, {}).
 -record(notice_response, {
-    fields :: [pgsql_error:pgsql_error_and_mention_field()]
+    fields :: [pgsql_error:pgsql_error_and_mention_field()] | #{error_field() => binary()}
 }).
 -record(notification_response, {
     procid :: pgsql_procid(),

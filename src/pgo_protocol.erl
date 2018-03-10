@@ -56,14 +56,14 @@ encode_ssl_request_message() ->
 %%--------------------------------------------------------------------
 %% @doc Encode a password.
 %%
--spec encode_password_message(iodata()) -> binary().
+-spec encode_password_message(iodata()) -> iolist().
 encode_password_message(Password) ->
     encode_string_message($p, Password).
 
 %%--------------------------------------------------------------------
 %% @doc Encode a query.
 %%
--spec encode_query_message(iodata()) -> binary().
+-spec encode_query_message(iodata()) -> iolist().
 encode_query_message(Query) ->
     encode_string_message($Q, Query).
 
@@ -87,7 +87,7 @@ encode_copy_done() ->
 %% @doc Encode the cancellation of a COPY operation with the given
 %%      failure message
 %%
--spec encode_copy_fail(iodata()) -> binary().
+-spec encode_copy_fail(iodata()) -> iolist().
 encode_copy_fail(ErrorMessage) ->
     encode_string_message($f, ErrorMessage).
     
@@ -107,7 +107,7 @@ encode_parse_message(PreparedStatementName, Query, DataTypes) ->
 %%--------------------------------------------------------------------
 %% @doc Encode a bind message.
 %%
--spec encode_bind_message(iodata(), iodata(), [any()], [pgsql_oid()], pgsql_oid_map(), boolean()) -> binary().
+-spec encode_bind_message(iodata(), iodata(), [any()], [pgsql_oid()], atom(), boolean()) -> iolist().
 encode_bind_message(PortalName, StatementName, Parameters, ParametersDataTypes, OIDMap, IntegerDateTimes) ->
     ParametersCount = length(Parameters),
     ParametersCountBin = <<ParametersCount:16/integer>>,
@@ -127,7 +127,7 @@ encode_bind_message(PortalName, StatementName, Parameters, ParametersDataTypes, 
 %% All parameters are currently encoded in text format except binaries that are
 %% encoded as binaries.
 %%
--spec encode_parameter(any(), pgsql_oid() | undefined, pgsql_oid_map(), boolean()) -> binary().
+-spec encode_parameter(any(), pgsql_oid() | undefined, atom(), boolean()) -> iodata().
 encode_parameter(null, _Type, _OIDMap, _IntegerDateTimes) ->
     <<-1:32/integer>>;
 encode_parameter(Float, ?FLOAT8OID, _OIDMap, _IntegerDateTimes) ->
@@ -391,7 +391,7 @@ encode_cancel_message(ProcID, Secret) ->
 %%--------------------------------------------------------------------
 %% @doc Encode a string message.
 %%
--spec encode_string_message(byte(), iodata()) -> binary().
+-spec encode_string_message(byte(), iodata()) -> iolist().
 encode_string_message(Identifier, String) ->    
     MessageLen = iolist_size(String) + 5,
     [<<Identifier, MessageLen:32/integer>>, String, <<0>>].
@@ -700,7 +700,7 @@ decode_string(Binary) ->
 %%--------------------------------------------------------------------
 %% @doc Decode a row format.
 %%
--spec decode_row([#row_description_field{}], [binary()], pgsql_oid_map(), proplists:proplist()) -> tuple().
+-spec decode_row([#row_description_field{}], [binary()], atom(), proplists:proplist()) -> tuple().
 decode_row(Descs, Values, OIDMap, DecodeOptions) ->
     decode_row0(Descs, Values, OIDMap, DecodeOptions, []).
 

@@ -20,10 +20,7 @@
          break/1]).
 
 -include("pgo.hrl").
-
--type error_field() :: severity | code | message | detail | hint | position | internal_position
-                     | internal_query | where | file | line | routine
-                     | schema | table | column | data_type | constraint | {unknown, byte()}.
+-include("pgo_internal.hrl").
 
 -export_type([result/0,
               pool_ref/0,
@@ -57,7 +54,7 @@ query(Query) ->
 
 %% @doc Executes a simple query either on a Pool or a provided connection.
 -spec query(conn() | pool(), iodata()) -> result().
-query(Conn={_, _, _}, Query) ->
+query(Conn=#conn{}, Query) ->
     pgo_handler:simple_query(Conn, Query);
 query(Pool, Query) when is_atom(Pool) ->
     {ok, Ref, Conn} = checkout(Pool),
@@ -71,7 +68,7 @@ query(Query, Params) ->
 
 %% @doc Executes an extended query either on a Pool or a provided connection.
 -spec query(conn() | pool(), iodata(), list()) -> result().
-query(Conn={_, _, _}, Query, Params) ->
+query(Conn=#conn{}, Query, Params) ->
     pgo_handler:extended_query(Conn, Query, Params);
 query(Pool, Query, Params) ->
     {ok, Ref, Conn} = checkout(Pool),
@@ -111,16 +108,16 @@ transaction(Pool, Fun) ->
     end.
 
 %% @doc Returns a connection from the pool.
--spec checkout(pool()) -> {ok, pool_ref(), conn()} | {drop, any()}.
+-spec checkout(pool()) -> {ok, pool_ref(), conn()} | {error, any()}.
 checkout(Pool) ->
     pgo_pool:checkout(Pool, [{queue, false}]).
 
 %% @doc Return a checked out connection to its pool
--spec checkin(pool_ref(), pool()) -> ok.
+-spec checkin(pool_ref(), conn()) -> ok.
 checkin(Ref, Conn) ->
     pgo_pool:checkin(Ref, Conn, []).
 
 %% @doc Disconnects the socket held by this reference.
--spec break(reference()) -> ok.
-break(Ref) ->
-    pgo_connection:break(Ref).
+-spec break(conn()) -> ok.
+break(Conn) ->
+    pgo_connection:break(Conn).

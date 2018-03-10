@@ -31,7 +31,7 @@
 -type ref() :: {Pool :: pid(),
                 Ref :: reference(),
                 TimerRef :: reference() | undefined,
-                Holder :: reference()}.
+                Holder :: ets:tid()}.
 
 -ifdef(TEST).
 -export([tid/1]).
@@ -43,7 +43,7 @@ tid(Pool) ->
 start_link(Pool, Opts) ->
     gen_server:start_link({local, Pool}, ?MODULE, {Pool, Opts}, []).
 
--spec checkout(atom(), list()) -> {ok, ref(), conn()} | {drop, any()}.
+-spec checkout(atom(), list()) -> {ok, ref(), conn()} | {error, any()}.
 checkout(Pool, Opts) ->
     MaybeQueue = proplists:get_value(queue, Opts, ?QUEUE),
     Now = erlang:monotonic_time(?TIME_UNIT),
@@ -116,7 +116,7 @@ handle_call({checkout, _Now, _MaybeQueue} = Checkout, From, Ready) ->
     end.
 
 handle_info({'ETS-TRANSFER', Holder, _Pid, Queue}, {_, Queue, _} = Data) ->
-    disconnect_holder(Holder, "client disconnected"),
+    disconnect_holder(Holder, {error, client_disconnected}),
     {noreply, Data};
 
 handle_info({'ETS-TRANSFER', Holder, _, {Msg, Queue, Extra}}, {_, Queue, _} = Data) ->
@@ -193,7 +193,7 @@ drop_slow(Time, Timeout, Queue) ->
 
 ping(Holder, Queue, Codel) ->
     [{_, Conn, _, State}] = ets:lookup(Holder, ?HOLDER_KEY),
-    pgo_connection:ping({Conn, Holder}, State),
+    pgo_connection:ping(Conn, Holder, State),
     ets:delete(Holder),
     {noreply, {ready, Queue, Codel}}.
 
@@ -303,9 +303,15 @@ start_holder(Pool, Ref, State) ->
     Holder.
 
 checkout_holder(Holder, {Pid, _} = From, Ref) ->
-    ets:give_away(Holder, Pid, Ref),
-    gen_server:reply(From, {ok, Holder}),
-    true.
+    try
+        ets:give_away(Holder, Pid, Ref),
+        gen_server:reply(From, {ok, Holder}),
+        true
+    catch
+        error:badarg ->
+            gen_server:reply(From, {error, give_away_failed}),
+            false
+    end.
 
 recv_holder(Holder, Start, Timeout) ->
     receive
@@ -330,4 +336,4 @@ delete_holder(Holder, Err) ->
     [{_, Conn, Deadline, State}] = ets:lookup(Holder, ?HOLDER_KEY),
     ets:delete(Holder),
     cancel_deadline(Deadline),
-    pgo_connection:disconnect({Conn, Holder}, Err, State).
+    pgo_connection:disconnect(Conn, Holder, Err, State).

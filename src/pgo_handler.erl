@@ -41,13 +41,13 @@
 -define(MESSAGE_HEADER_SIZE, 5).
 
 % pgsql extended query states.
--type extended_query_mode() :: all | batch | {cursor, non_neg_integer()}.
+%% -type extended_query_mode() :: all | batch | {cursor, non_neg_integer()}.
 -type extended_query_loop_state() ::
         % expect parse_complete message
         parse_complete
-    |   {parse_complete_with_params, extended_query_mode(), [any()]}
+    |   {parse_complete_with_params, [any()]}
         % expect parameter_description
-    |   {parameter_description_with_params, extended_query_mode(), [any()]}
+    |   {parameter_description_with_params, [any()]}
         % expect row_description or no_data
     |   pre_bind_row_description
         % expect bind_complete
@@ -60,8 +60,6 @@
     |   no_data
         % expect ready_for_query
     |   {result, any()}.
-
--define(binary_to_integer(Bin), list_to_integer(binary_to_list(Bin))).
 
 %%--------------------------------------------------------------------
 %% @doc Perform a simple query.
@@ -157,7 +155,7 @@ pgsql_setup(Socket, Options) ->
             pgsql_setup_ssl(Socket, Options)
     end.
 
-pgsql_setup_ssl(#conn{socket=Socket}, Options) ->
+pgsql_setup_ssl(Socket, Options) ->
     SSLRequestMessage = pgo_protocol:encode_ssl_request_message(),
     case gen_tcp:send(Socket, SSLRequestMessage) of
         ok ->
@@ -295,7 +293,8 @@ pgsql_extended_query(Conn=#conn{socket=Socket,
             case encode_bind_describe_execute(Parameters, DataTypes, Pool, IntegerDateTimes) of
                 {ok, BindExecute} ->
                     {ok, [ParseMessage, BindExecute], parse_complete};
-                {error, _} = Error -> Error
+                {error, _} = Error ->
+                    Error
             end
     end,
     case PacketT of
@@ -319,9 +318,13 @@ encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, IntegerDateTi
     DescribeMessage = pgo_protocol:encode_describe_message(portal, ""),
     ExecuteMessage = pgo_protocol:encode_execute_message("", 0),
     SyncOrFlushMessage = pgo_protocol:encode_sync_message(),
-    BindMessage = pgo_protocol:encode_bind_message("", "", Parameters, ParameterDataTypes, Pool, IntegerDateTimes),
-    SinglePacket = [BindMessage, DescribeMessage, ExecuteMessage, SyncOrFlushMessage],
-    {ok, SinglePacket}.
+    try
+        BindMessage = pgo_protocol:encode_bind_message("", "", Parameters, ParameterDataTypes, Pool, IntegerDateTimes),
+        SinglePacket = [BindMessage, DescribeMessage, ExecuteMessage, SyncOrFlushMessage],
+        {ok, SinglePacket}
+    catch throw:Exception ->
+        {error, Exception}
+    end.
 
 %% requires_statement_description(_Parameters) ->
 %%     true. %pgo_protocol:bind_requires_statement_description(Parameters).
@@ -342,11 +345,11 @@ pgsql_extended_query_receive_loop0(#parameter_status{name=_Name, value=_Value}, 
 pgsql_extended_query_receive_loop0(#parse_complete{}, parse_complete, Fun, Acc0, QueryOptions, Conn) ->
     pgsql_extended_query_receive_loop(bind_complete, Fun, Acc0, QueryOptions, Conn);
 
-% Path where we ask the backend about what it expects.
-% We ignore row descriptions sent before bind as the format codes are null.
+%% Path where we ask the backend about what it expects.
+%% We ignore row descriptions sent before bind as the format codes are null.
 pgsql_extended_query_receive_loop0(#parse_complete{}, {parse_complete_with_params, Parameters}, Fun, Acc0, QueryOptions, Conn) ->
     pgsql_extended_query_receive_loop({parameter_description_with_params, Parameters}, Fun, Acc0, QueryOptions, Conn);
-pgsql_extended_query_receive_loop0(#parameter_description{data_types = ParameterDataTypes}, {parameter_description_with_params, Parameters}, Fun, Acc0, QueryOptions, Conn=#conn{socket=Socket, pool=Pool}) ->
+pgsql_extended_query_receive_loop0(#parameter_description{data_types=ParameterDataTypes}, {parameter_description_with_params, Parameters}, Fun, Acc0, QueryOptions, Conn=#conn{socket=Socket, pool=Pool}) ->
     pgo_query_cache:insert(Pool, get(query), ParameterDataTypes),
     oob_update_oid_map_if_required(Conn, ParameterDataTypes),
     PacketT = encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, true),
@@ -385,15 +388,15 @@ pgsql_extended_query_receive_loop0(#command_complete{command_tag = Tag}, _LoopSt
     pgsql_extended_query_receive_loop({result, #pg_result{command=Command,
                                                           num_rows=NumRows,
                                                           rows=lists:reverse(Acc0)}}, Fun, Acc0, QueryOptions, Conn);
-pgsql_extended_query_receive_loop0(#portal_suspended{}, LoopState, Fun, Acc0, QueryOptions, Conn={_,S}) ->
-    ExecuteMessage = pgo_protocol:encode_execute_message("", 0),
-    FlushMessage = pgo_protocol:encode_flush_message(),
-    SinglePacket = [ExecuteMessage, FlushMessage],
-    case gen_tcp:send(S, SinglePacket) of
-        ok -> pgsql_extended_query_receive_loop(LoopState, Fun, Acc0, QueryOptions, Conn);
-        {error, _} = SendSinglePacketError ->
-            SendSinglePacketError
-    end;
+%% pgsql_extended_query_receive_loop0(#portal_suspended{}, LoopState, Fun, Acc0, QueryOptions, Conn={_,S}) ->
+%%     ExecuteMessage = pgo_protocol:encode_execute_message("", 0),
+%%     FlushMessage = pgo_protocol:encode_flush_message(),
+%%     SinglePacket = [ExecuteMessage, FlushMessage],
+%%     case gen_tcp:send(S, SinglePacket) of
+%%         ok -> pgsql_extended_query_receive_loop(LoopState, Fun, Acc0, QueryOptions, Conn);
+%%         {error, _} = SendSinglePacketError ->
+%%             SendSinglePacketError
+%%     end;
 pgsql_extended_query_receive_loop0(#ready_for_query{}, {result, Result}, _Fun, _Acc0, _QueryOptions, __Socket) ->
     Result;
 pgsql_extended_query_receive_loop0(#error_response{fields = Fields}, LoopState, _Fun, _Acc0, _QueryOptions, Conn=#conn{socket=Socket}) ->
@@ -441,27 +444,29 @@ flush_until_ready_for_query(Result, Conn=#conn{socket=Socket}) ->
 %%
 receive_message(Socket) ->
     Result0 = case gen_tcp:recv(Socket, ?MESSAGE_HEADER_SIZE) of
-        {ok, <<Code:8/integer, Size:32/integer>>} ->
-            Payload = Size - 4,
-            case Payload of
-                0 ->
-                    pgo_protocol:decode_message(Code, <<>>);
-                _ ->
-                    case gen_tcp:recv(Socket, Payload) of
-                        {ok, Rest} ->
-                            pgo_protocol:decode_message(Code, Rest);
-                        {error, _} = ErrorRecvPacket -> ErrorRecvPacket
-                    end
-            end;
-        {error, _} = ErrorRecvPacketHeader ->
-            ErrorRecvPacketHeader
-    end,
+                  {ok, <<Code:8/integer, Size:32/integer>>} ->
+                      Payload = Size - 4,
+                      case Payload of
+                          0 ->
+                              pgo_protocol:decode_message(Code, <<>>);
+                          _ ->
+                              case gen_tcp:recv(Socket, Payload) of
+                                  {ok, Rest} ->
+                                      pgo_protocol:decode_message(Code, Rest);
+                                  {error, _} = ErrorRecvPacket ->
+                                      ErrorRecvPacket
+                              end
+                      end;
+                  {error, _} = ErrorRecvPacketHeader ->
+                      ErrorRecvPacketHeader
+              end,
     case Result0 of
         {ok, #notification_response{} = _Notification} ->
             receive_message(Socket);
-        {ok, #notice_response{} = _Notice} ->
-            receive_message(Socket);
-        _ -> Result0
+        %% {ok, #notice_response{} = _Notice} ->
+        %%     receive_message(Socket);
+        _ ->
+            Result0
     end.
 
 %%--------------------------------------------------------------------

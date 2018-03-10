@@ -13,7 +13,7 @@
 
 -record(data, {pool        :: atom(),
                db_options  :: list(),
-               last_reload :: integer()}).
+               last_reload :: integer() | undefined}).
 
 start_link(Pool, DBOptions) ->
     gen_statem:start_link(?MODULE, [Pool, DBOptions], []).

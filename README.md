@@ -1,9 +1,12 @@
-PGO
-=====
+# PGO
+
+[![CircleCI](https://circleci.com/gh/SpaceTime-IoT/pgo.svg?style=svg)](https://circleci.com/gh/SpaceTime-IoT/pgo)
+[![Coverage Status](https://coveralls.io/repos/github/SpaceTime-IoT/pgo/badge.svg?branch=master)](https://coveralls.io/github/SpaceTime-IoT/pgo?branch=master)
+[![Hex.pm](https://img.shields.io/hexpm/v//pgo.svg?maxAge=2592000)](https://hex.pm/packages/pgo)
 
 PG...Oh god not nother Postgres client in Erlang...
 
-### Why
+## Why
 
 * No message passing. Clients checkout the socket and use it directly.
 * Binary protocol with input oids cached.
@@ -11,7 +14,7 @@ PG...Oh god not nother Postgres client in Erlang...
 * Instrumented with [OpenCensus](https://github.com/census-instrumentation/opencensus-erlang)
 * Mix apps currently too hard to use in a Rebar3 project. 
 
-### Use
+## Use
 
 Pools defined in the `pgo` application's environment will be started on boot. You can also add pools dynamically with `pgo:start_pool/3`.
 
@@ -37,7 +40,7 @@ $ rebar3 shell
 #pg_result{command=select, num_rows=1, rows=[{1}]}
 ```
 
-### Running Tests
+## Running Tests
 
 Pool functionality is tested with common test suites:
 
@@ -51,7 +54,7 @@ Postgres query functionality is tested with eunit, create user `test` and databa
 $ rebar3 eunit
 ```
 
-### Acknowledgements
+## Acknowledgements
 
 Much is owed to https://github.com/semiocast/pgsql (especially for protocol step logic) and https://github.com/epgsql/epgsql/ (especially for some decoding logic).
 
