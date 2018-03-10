@@ -74,7 +74,7 @@ query(Query, Params) ->
 query(Conn=#conn{}, Query, Params) ->
     pgo_handler:extended_query(Conn, Query, Params);
 query(Pool, Query, Params) ->
-    SpanCtx = oc_trace:start_span(<<"pgo:query/2">>, ocp:current_span_ctx(),
+    SpanCtx = oc_trace:start_span(<<"pgo:query/3">>, ocp:current_span_ctx(),
                                   #{attributes => #{<<"query">> => Query}}),
     {ok, Ref, Conn} = checkout(Pool),
     try
@@ -94,6 +94,7 @@ transaction(Fun) ->
 transaction(Pool, Fun) ->
     case get(pgo_transaction_connection) of
         undefined ->
+            SpanCtx = oc_trace:start_span(<<"pgo:transaction/2">>, ocp:current_span_ctx(), #{}),
             {ok, Ref, Conn} = checkout(Pool),
             try
                 #pg_result{command='begin'} = pgo_handler:simple_query(Conn, "BEGIN"),
@@ -102,11 +103,13 @@ transaction(Pool, Fun) ->
                 #pg_result{command='commit'} = pgo_handler:simple_query(Conn, "COMMIT"),
                 Result
             catch
-                _:_ ->
-                    pgo_handler:simple_query(Conn, "ROLLBACK")
+                Class:Reason ->
+                    pgo_handler:simple_query(Conn, "ROLLBACK"),
+                    erlang:raise(Class, Reason, erlang:get_stacktrace())
             after
                 checkin(Ref, Conn),
-                erase(pgo_transaction_connection)
+                erase(pgo_transaction_connection),
+                oc_trace:finish_span(SpanCtx)
             end;
         Conn ->
             %% already in a transaction
