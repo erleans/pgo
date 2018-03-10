@@ -97,8 +97,9 @@ jobs:
       - run:
           command: |
             set -eux
-            rebar3 do ct, eunit, cover
-            rebar3 coveralls send
+            rebar3 do ct, eunit --cover, cover
+            apk add --update python python-dev py-pip
+            pip install codecov && codecov -f _build/test/cover/ct.coverdata -f _build/test/cover/eunit.coverdata
 
       - store_test_results:
           path: /home/circleci/pgo/_build/test/logs/
