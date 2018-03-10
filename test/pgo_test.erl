@@ -19,7 +19,7 @@ kill_sup(SupPid) ->
     process_flag(trap_exit, OldTrapExit).
 
 start_pool() ->
-    pgo_query_cache:start_link(),
+    application:ensure_all_started(pgo),
     {ok, Pid} = pgo_pool:start_link(default, [{size, 1}, {database, "test"}, {user, "test"}]),
     Tid = pgo_pool:tid(default),
     ?UNTIL((catch ets:info(Tid, size)) =:= 1),

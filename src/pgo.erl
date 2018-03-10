@@ -42,12 +42,12 @@
                   | {database, string()}.
 -type pool_config() :: [pool_opt()].
 
-%% @doc Starts connection pool as a child of `pgo_sup`.
+%% @doc Starts connection pool as a child of pgo_sup.
 -spec start_pool(pool(), pool_config()) -> {ok, pid()}.
 start_pool(Name, PoolConfig) ->
     pgo_sup:start_child(Name, PoolConfig).
 
-%% @equiv query(default, Query).
+%% @equiv query(default, Query)
 -spec query(iodata()) -> result().
 query(Query) ->
     query(default, Query).
@@ -57,11 +57,14 @@ query(Query) ->
 query(Conn=#conn{}, Query) ->
     pgo_handler:simple_query(Conn, Query);
 query(Pool, Query) when is_atom(Pool) ->
+    SpanCtx = oc_trace:start_span(<<"pgo:query/2">>, ocp:current_span_ctx(),
+                                  #{attributes => #{<<"query">> => Query}}),
     {ok, Ref, Conn} = checkout(Pool),
     try
         pgo_handler:simple_query(Conn, Query)
     after
-        checkin(Ref, Conn)
+        checkin(Ref, Conn),
+        oc_trace:finish_span(SpanCtx)
     end;
 query(Query, Params) ->
     query(default, Query, Params).
@@ -71,14 +74,17 @@ query(Query, Params) ->
 query(Conn=#conn{}, Query, Params) ->
     pgo_handler:extended_query(Conn, Query, Params);
 query(Pool, Query, Params) ->
+    SpanCtx = oc_trace:start_span(<<"pgo:query/2">>, ocp:current_span_ctx(),
+                                  #{attributes => #{<<"query">> => Query}}),
     {ok, Ref, Conn} = checkout(Pool),
     try
         pgo_handler:extended_query(Conn, Query, Params)
     after
-        checkin(Ref, Conn)
+        checkin(Ref, Conn),
+        oc_trace:finish_span(SpanCtx)
     end.
 
-%% @equiv transaction(default, Fun).
+%% @equiv transaction(default, Fun)
 -spec transaction(fun((conn()) -> any())) -> any().
 transaction(Fun) ->
     transaction(default, Fun).
