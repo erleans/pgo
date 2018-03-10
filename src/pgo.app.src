@@ -13,5 +13,5 @@
 
   {maintainers, ["Tristan Sloughter"]},
   {licenses, ["Apache 2"]},
-  {links, [{"Github", "https://github.com/tsloughter/pgo"}]}
+  {links, [{"Github", "https://github.com/SpaceTime-IoT/pgo"}]}
  ]}.
