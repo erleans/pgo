@@ -1,6 +1,6 @@
 {application, pgo,
  [{description, "Postgres client with connection pool"},
-  {vsn, "0.2.0"},
+  {vsn, "git"},
   {registered, []},
   {mod, {pgo_app, []}},
   {applications,
