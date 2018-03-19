@@ -57,14 +57,14 @@ query(Query) ->
 query(Conn=#conn{}, Query) ->
     pgo_handler:simple_query(Conn, Query);
 query(Pool, Query) when is_atom(Pool) ->
-    SpanCtx = oc_trace:start_span(<<"pgo:query/2">>, ocp:current_span_ctx(),
-                                  #{attributes => #{<<"query">> => Query}}),
+    %% SpanCtx = oc_trace:start_span(<<"pgo:query/2">>, ocp:current_span_ctx(),
+    %%                               #{attributes => #{<<"query">> => Query}}),
     {ok, Ref, Conn} = checkout(Pool),
     try
         pgo_handler:simple_query(Conn, Query)
     after
-        checkin(Ref, Conn),
-        oc_trace:finish_span(SpanCtx)
+        checkin(Ref, Conn)%% ,
+        %% oc_trace:finish_span(SpanCtx)
     end;
 query(Query, Params) ->
     query(default, Query, Params).
@@ -74,14 +74,14 @@ query(Query, Params) ->
 query(Conn=#conn{}, Query, Params) ->
     pgo_handler:extended_query(Conn, Query, Params);
 query(Pool, Query, Params) ->
-    SpanCtx = oc_trace:start_span(<<"pgo:query/3">>, ocp:current_span_ctx(),
-                                  #{attributes => #{<<"query">> => Query}}),
+    %% SpanCtx = oc_trace:start_span(<<"pgo:query/3">>, ocp:current_span_ctx(),
+    %%                               #{attributes => #{<<"query">> => Query}}),
     {ok, Ref, Conn} = checkout(Pool),
     try
         pgo_handler:extended_query(Conn, Query, Params)
     after
-        checkin(Ref, Conn),
-        oc_trace:finish_span(SpanCtx)
+        checkin(Ref, Conn)%% ,
+        %% oc_trace:finish_span(SpanCtx)
     end.
 
 %% @equiv transaction(default, Fun)
@@ -94,7 +94,7 @@ transaction(Fun) ->
 transaction(Pool, Fun) ->
     case get(pgo_transaction_connection) of
         undefined ->
-            SpanCtx = oc_trace:start_span(<<"pgo:transaction/2">>, ocp:current_span_ctx(), #{}),
+            %% SpanCtx = oc_trace:start_span(<<"pgo:transaction/2">>, ocp:current_span_ctx(), #{}),
             {ok, Ref, Conn} = checkout(Pool),
             try
                 #pg_result{command='begin'} = pgo_handler:simple_query(Conn, "BEGIN"),
@@ -108,8 +108,8 @@ transaction(Pool, Fun) ->
                     erlang:raise(Class, Reason, erlang:get_stacktrace())
             after
                 checkin(Ref, Conn),
-                erase(pgo_transaction_connection),
-                oc_trace:finish_span(SpanCtx)
+                erase(pgo_transaction_connection)%% ,
+                %% oc_trace:finish_span(SpanCtx)
             end;
         Conn ->
             %% already in a transaction
