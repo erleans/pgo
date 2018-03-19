@@ -463,8 +463,8 @@ receive_message(Socket) ->
     case Result0 of
         {ok, #notification_response{} = _Notification} ->
             receive_message(Socket);
-        %% {ok, #notice_response{} = _Notice} ->
-        %%     receive_message(Socket);
+        {ok, #notice_response{} = _Notice} ->
+            receive_message(Socket);
         _ ->
             Result0
     end.
