@@ -2,7 +2,6 @@
 -module(pgo_handler).
 
 -include("pgo_internal.hrl").
--include("pgo.hrl").
 
 -export([pgsql_open/2,
          simple_query/2,
@@ -94,7 +93,7 @@ pgsql_simple_query_loop(Result0, Acc, QueryOptions, Conn=#conn{pool=Pool,
                 {rows, _Descs, AccRows} -> lists:reverse(AccRows);
                 [] -> []
             end,
-            Acc1 = [#pg_result{command=Command, num_rows=NumRows, rows=ResultRows} | Acc],
+            Acc1 = [#{command => Command, num_rows => NumRows, rows => ResultRows} | Acc],
             pgsql_simple_query_loop([], Acc1, QueryOptions, Conn);
         {ok, #empty_query_response{}} ->
             pgsql_simple_query_loop(Result0, Acc, QueryOptions, Conn);
@@ -330,7 +329,7 @@ encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, IntegerDateTi
 %%     true. %pgo_protocol:bind_requires_statement_description(Parameters).
 
 -spec pgsql_extended_query_receive_loop(extended_query_loop_state(), fun(), list(), list(), pgo:conn())
-                                       -> #pg_result{} | {error, any()}.
+                                       -> pgo:result().
 pgsql_extended_query_receive_loop(LoopState, Fun, Acc0, QueryOptions, Conn=#conn{socket=Socket}) ->
     case receive_message(Socket) of
         {ok, Message} ->
@@ -385,9 +384,9 @@ pgsql_extended_query_receive_loop0(#data_row{values = Values}, {rows, Fields} = 
     pgsql_extended_query_receive_loop(LoopState, Fun, [Fun(DecodedRow, Fields) | Acc0], QueryOptions, Conn);
 pgsql_extended_query_receive_loop0(#command_complete{command_tag = Tag}, _LoopState, Fun, Acc0, QueryOptions, Conn) ->
     {Command, NumRows} = decode_tag(Tag),
-    pgsql_extended_query_receive_loop({result, #pg_result{command=Command,
-                                                          num_rows=NumRows,
-                                                          rows=lists:reverse(Acc0)}}, Fun, Acc0, QueryOptions, Conn);
+    pgsql_extended_query_receive_loop({result, #{command => Command,
+                                                 num_rows => NumRows,
+                                                 rows => lists:reverse(Acc0)}}, Fun, Acc0, QueryOptions, Conn);
 %% pgsql_extended_query_receive_loop0(#portal_suspended{}, LoopState, Fun, Acc0, QueryOptions, Conn={_,S}) ->
 %%     ExecuteMessage = pgo_protocol:encode_execute_message("", 0),
 %%     FlushMessage = pgo_protocol:encode_flush_message(),

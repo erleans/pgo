@@ -37,7 +37,7 @@ Then start a shell with `rebar3`, it will boot the applications which will start
 $ rebar3 shell 
 
 1> pgo:query("select 1").
-#pg_result{command=select, num_rows=1, rows=[{1}]}
+#{command => select, num_rows => 1, rows => [{1}]}
 ```
 
 ## Running Tests

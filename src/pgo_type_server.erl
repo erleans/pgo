@@ -9,8 +9,6 @@
          ready/3,
          terminate/3]).
 
--include("pgo.hrl").
-
 -record(data, {pool        :: atom(),
                db_options  :: list(),
                last_reload :: integer() | undefined}).
@@ -55,7 +53,7 @@ terminate(_, _, #data{pool=Pool}) ->
 
 load(Pool, LastReload, RequestTime, DBOptions) when LastReload < RequestTime ->
     {ok, Conn} = pgo_handler:pgsql_open(Pool, DBOptions),
-    #pg_result{rows=Oids} = pgo_handler:simple_query(Conn, "SELECT oid, typname FROM pg_type"),
+    #{rows := Oids} = pgo_handler:simple_query(Conn, "SELECT oid, typname FROM pg_type"),
     pgo_handler:close(Conn),
     [ets:insert(Pool, {Oid, binary_to_atom(Typename, utf8)}) || {Oid, Typename} <- Oids];
 load(_, _, _, _) ->
