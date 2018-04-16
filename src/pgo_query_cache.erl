@@ -11,8 +11,6 @@
          ready/3,
          terminate/3]).
 
--include("pgo.hrl").
-
 -record(data, {}).
 
 start_link() ->

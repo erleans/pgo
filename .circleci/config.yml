@@ -100,7 +100,7 @@ jobs:
             rebar3 do ct, eunit --cover, cover
             rebar3 covertool generate
             apk add --update python python-dev py-pip
-            pip install codecov && codecov -f _build/test/cover/ct.coverdata -f _build/test/cover/eunit.coverdata
+            pip install codecov && codecov -f _build/test/covertool/pgo.covertool.xml
 
       - store_test_results:
           path: /home/circleci/pgo/_build/test/logs/

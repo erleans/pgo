@@ -1,7 +1,6 @@
 -module(pgo_test).
 
 -include_lib("eunit/include/eunit.hrl").
--include("pgo.hrl").
 
 %%%% CREATE ROLE test LOGIN;
 %%%% ALTER USER test WITH SUPERUSER
@@ -51,10 +50,10 @@ select_null_test_() ->
      end,
      fun(_) ->
              [
-              ?_assertMatch(#pg_result{rows=[{null}]}, pgo:query(default, "select null")),
-              ?_assertMatch(#pg_result{rows=[{null}]}, pgo:query(default, "select null", [])),
-              ?_assertMatch(#pg_result{rows=[{null}]}, pgo:query(default, "select null")),
-              ?_assertMatch(#pg_result{rows=[{null}]}, pgo:query(default, "select null", []))
+              ?_assertMatch(#{rows := [{null}]}, pgo:query(default, "select null")),
+              ?_assertMatch(#{rows := [{null}]}, pgo:query(default, "select null", [])),
+              ?_assertMatch(#{rows := [{null}]}, pgo:query(default, "select null")),
+              ?_assertMatch(#{rows := [{null}]}, pgo:query(default, "select null", []))
              ]
      end}.
 
@@ -71,43 +70,43 @@ sql_query_test_() ->
      fun(_) ->
              [
               {"Create table",
-               ?_assertMatch(#pg_result{command=create},
+               ?_assertMatch(#{command := create},
                              pgo:query(default, "create table foo (id integer primary key, some_text text)"))
               },
               {"Insert into",
-               ?_assertMatch(#pg_result{command=insert},
+               ?_assertMatch(#{command := insert},
                              pgo:query(default, "insert into foo (id, some_text) values (1, 'hello')"))
               },
               {"Update",
-               ?_assertMatch(#pg_result{command=update},
+               ?_assertMatch(#{command := update},
                              pgo:query(default, "update foo set some_text = 'hello world'"))
               },
               {"Insert into",
-               ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into foo (id, some_text) values (2, 'hello again')"))
+               ?_assertMatch(#{command := insert}, pgo:query(default, "insert into foo (id, some_text) values (2, 'hello again')"))
               },
               {"Update on matching condition",
-               ?_assertMatch(#pg_result{}, pgo:query(default, "update foo set some_text = 'hello world' where id = 1"))
+               ?_assertMatch(#{}, pgo:query(default, "update foo set some_text = 'hello world' where id = 1"))
               },
               {"Update on non-matching condition",
-               ?_assertMatch(#pg_result{}, pgo:query(default, "update foo set some_text = 'goodbye, all' where id = 3"))
+               ?_assertMatch(#{}, pgo:query(default, "update foo set some_text = 'goodbye, all' where id = 3"))
               },
               {"Select *",
-               ?_assertMatch(#pg_result{rows=[{1, <<"hello world">>}, {2, <<"hello again">>}]},
+               ?_assertMatch(#{rows := [{1, <<"hello world">>}, {2, <<"hello again">>}]},
                              pgo:query(default, "select * from foo order by id asc"))
               },
               {"Select with named columns",
-               ?_assertMatch(#pg_result{rows=[{1, <<"hello world">>}, {2, <<"hello again">>}]},
+               ?_assertMatch(#{rows := [{1, <<"hello world">>}, {2, <<"hello again">>}]},
                              pgo:query(default, "select id as the_id, some_text as the_text from foo order by id asc"))
               },
               {"Select with inverted columns",
-               ?_assertMatch(#pg_result{rows=[{<<"hello world">>, 1}, {<<"hello again">>, 2}]},
+               ?_assertMatch(#{rows := [{<<"hello world">>, 1}, {<<"hello again">>, 2}]},
                              pgo:query(default, "select some_text, id from foo order by id asc"))
               },
               {"Select with matching condition",
-               ?_assertMatch(#pg_result{rows=[{<<"hello again">>}]}, pgo:query(default, "select some_text from foo where id = 2"))
+               ?_assertMatch(#{rows := [{<<"hello again">>}]}, pgo:query(default, "select some_text from foo where id = 2"))
               },
               {"Select with non-matching condition",
-               ?_assertMatch(#pg_result{}, pgo:query(default, "select * from foo where id = 3"))
+               ?_assertMatch(#{}, pgo:query(default, "select * from foo where id = 3"))
               }
              ]
      end}.
@@ -125,64 +124,64 @@ types_test_() ->
      fun(_) ->
              [
               {"Create table for the types",
-               ?_assertMatch(#pg_result{command=create},
+               ?_assertMatch(#{command := create},
                              pgo:query(default, "create table types (id integer primary key, an_integer integer, a_bigint bigint, a_text text, a_uuid uuid, a_bytea bytea, a_real real)"))
               },
               {"Insert nulls (literal)",
-               ?_assertMatch(#pg_result{command=insert},
+               ?_assertMatch(#{command := insert},
                              pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values (1, null, null, null, null, null, null)"))
               },
               {"Select nulls (1)",
-               ?_assertMatch(#pg_result{rows=[{1, null, null, null, null, null, null}]},
+               ?_assertMatch(#{rows := [{1, null, null, null, null, null, null}]},
                              pgo:query(default, "select * from types where id = 1"))
               },
               {"Insert nulls (params)",
-               ?_assertMatch(#pg_result{command=insert},
+               ?_assertMatch(#{command := insert},
                              pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)", [2, null, null, null, null, null, null]))
               },
               {"Select nulls (2)",
-               ?_assertMatch(#pg_result{rows=[{2, null, null, null, null, null, null}]},
+               ?_assertMatch(#{rows := [{2, null, null, null, null, null, null}]},
                              pgo:query(default, "select * from types where id = 2"))
               },
               {"Insert integer",
-               ?_assertMatch(#pg_result{command=insert},
+               ?_assertMatch(#{command := insert},
                              pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                                        [3, 42, null, null, null, null, null]))
               },
               {"Insert bigint",
-               ?_assertMatch(#pg_result{command=insert},
+               ?_assertMatch(#{command := insert},
                              pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                                        [4, null, 1099511627776, null, null, null, null]))
               },
               {"Insert text (binary)",
-               ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
+               ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                                                                    [6, null, null, <<"And in the end, the love you take is equal to the love you make">>, null, null, null]))
               },
               {"Insert uuid",
-               ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
+               ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                                                                    [7, null, null, null, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>, null, null]))
               },
               {"Insert bytea",
-               ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
+               ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                                                                    [8, null, null, null, null, <<"deadbeef">>, null]))
               },
               {"Insert float",
-               ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
+               ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                                                                    [9, null, null, null, null, null, 3.1415]))
               },
               {"Insert float",
-               ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
+               ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                                                                    [19, null, null, null, null, null, 3.0]))
               },
               {"Insert all",
-               ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
+               ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                                                                    [10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>, <<"deadbeef">>, 3.1415]))
               },
               {"Select values (10)",
                ?_test(begin
                           R = pgo:query(default, "select * from types where id = 10"),
-                          ?assertMatch(#pg_result{command=select, rows=[_Row]}, R),
-                          #pg_result{command=select, rows=[Row]} = R,
+                          ?assertMatch(#{command := select, rows := [_Row]}, R),
+                          #{command := select, rows := [Row]} = R,
                           ?assertMatch({10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, _UUID, <<"deadbeef">>, _Float}, Row),
                           {10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, UUID, <<"deadbeef">>, Float} = Row,
                           ?assertMatch(<<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>, UUID),
@@ -193,8 +192,8 @@ types_test_() ->
               {"Select values (10) (with bind)",
                ?_test(begin
                           R = pgo:query(default, "select * from types where id = $1", [10]),
-                          ?assertMatch(#pg_result{command=select, rows=[_Row]}, R),
-                          #pg_result{command=select, rows=[Row]} = R,
+                          ?assertMatch(#{command := select, rows := [_Row]}, R),
+                          #{command := select, rows := [Row]} = R,
                           ?assertMatch({10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, _UUID, <<"deadbeef">>, _Float}, Row),
                           {10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, UUID, <<"deadbeef">>, Float} = Row,
                           ?assertMatch(<<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>, UUID),
@@ -203,44 +202,44 @@ types_test_() ->
                       end)
               },
               {"Insert bytea",
-               ?_assertMatch(#pg_result{command=insert},
+               ?_assertMatch(#{command := insert},
                              pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                                        [11, null, null, null, null, <<"deadbeef">>, null]))
               },
               {"Insert with returning",
-               ?_assertMatch(#pg_result{command=insert, rows=[{15}]},
+               ?_assertMatch(#{command := insert, rows := [{15}]},
                              pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
                                        [15, null, null, null, null, <<"deadbeef">>, null]))
               },
               {"Select values (11)",
                ?_test(begin
                           R = pgo:query(default, "select * from types where id = $1", [11]),
-                          ?assertMatch(#pg_result{command=select, rows=[_Row]}, R),
-                          #pg_result{command=select, rows=[Row]} = R,
+                          ?assertMatch(#{command := select, rows := [_Row]}, R),
+                          #{command := select, rows := [Row]} = R,
                           ?assertMatch({11, null, null, null, null, <<"deadbeef">>, null}, Row)
                       end)
               },
               {"Insert uuid 0",
-               ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
+               ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                                                                    [199, null, null, null, <<"00000000-0000-0000-0000-000000000000">>, null, null]))
               },
               {"Insert uuid in lowercase",
-               ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
+               ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                                                                    [16, null, null, null, <<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>, null, null]))
               },
               {"Insert uc uuid in text column",
-               ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
+               ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                                                                    [17, null, null, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>, null, null, null]))
               },
               {"Insert lc uuid in text column",
-               ?_assertMatch(#pg_result{command=insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
+               ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                                                                    [18, null, null, <<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>, null, null, null]))
               },
               {"Select text uuid (17 \& 18)",
                ?_test(begin
                           R = pgo:query(default, "select a_text from types where id IN ($1, $2) order by id", [17, 18]),
-                          ?assertMatch(#pg_result{command=select, rows=[_Row17, _Row18]}, R),
-                          #pg_result{command=select, rows=[Row17, Row18]} = R,
+                          ?assertMatch(#{command := select, rows := [_Row17, _Row18]}, R),
+                          #{command := select, rows := [Row17, Row18]} = R,
                           ?assertMatch({<<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>}, Row17),
                           ?assertMatch({<<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>}, Row18)
                       end)
@@ -259,14 +258,14 @@ text_types_test_() ->
      end,
      fun(_) ->
              [
-              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select 'foo'::text")),
-              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select $1::text", [<<"foo">>])),
-              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo         ">>}]}, pgo:query("select 'foo'::char(12)")),
-              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo         ">>}]}, pgo:query("select $1::char(12)", [<<"foo">>])),
-              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select 'foo'::varchar(12)")),
-              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select $1::varchar(12)", [<<"foo">>])),
-              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select 'foobar'::char(3)")),
-              ?_assertMatch(#pg_result{command=select,rows=[{<<"foo">>}]}, pgo:query("select $1::char(3)", [<<"foobar">>]))
+              ?_assertMatch(#{command := select,rows := [{<<"foo">>}]}, pgo:query("select 'foo'::text")),
+              ?_assertMatch(#{command := select,rows := [{<<"foo">>}]}, pgo:query("select $1::text", [<<"foo">>])),
+              ?_assertMatch(#{command := select,rows := [{<<"foo         ">>}]}, pgo:query("select 'foo'::char(12)")),
+              ?_assertMatch(#{command := select,rows := [{<<"foo         ">>}]}, pgo:query("select $1::char(12)", [<<"foo">>])),
+              ?_assertMatch(#{command := select,rows := [{<<"foo">>}]}, pgo:query("select 'foo'::varchar(12)")),
+              ?_assertMatch(#{command := select,rows := [{<<"foo">>}]}, pgo:query("select $1::varchar(12)", [<<"foo">>])),
+              ?_assertMatch(#{command := select,rows := [{<<"foo">>}]}, pgo:query("select 'foobar'::char(3)")),
+              ?_assertMatch(#{command := select,rows := [{<<"foo">>}]}, pgo:query("select $1::char(3)", [<<"foobar">>]))
              ]
      end
     }.
@@ -914,34 +913,34 @@ json_types_test_() ->
      end,
      fun(_) ->
              [?_test(begin
-                         #pg_result{command=create} = pgo:query(default, "create table tmp (id integer primary key, a_json json, b_json json)"),
-                         #pg_result{command=insert} = pgo:query(default, "insert into tmp (id, b_json) values ($1, $2)",
+                         #{command := create} = pgo:query(default, "create table tmp (id integer primary key, a_json json, b_json json)"),
+                         #{command := insert} = pgo:query(default, "insert into tmp (id, b_json) values ($1, $2)",
                                                                 [2, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>]),
-                         #pg_result{command=insert} = pgo:query(default, "insert into tmp (id, b_json) values ($1, $2)",
+                         #{command := insert} = pgo:query(default, "insert into tmp (id, b_json) values ($1, $2)",
                                                                 [3, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>]),
-                         #pg_result{command=select, rows=Rows} =
+                         #{command := select, rows := Rows} =
                              pgo:query(default, "select '[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]'::json"),
                          ?assertMatch([[#{<<"a">> := <<"foo">>},
                                         #{<<"b">> := <<"bar">>},
                                         #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {{json, R}} <- Rows]),
-                         #pg_result{command=select, rows=Rows2} =
+                         #{command := select, rows := Rows2} =
                              pgo:query(default, "select b_json from tmp where id = 2"),
                          ?assertMatch([[#{<<"a">> := <<"foo">>},
                                         #{<<"b">> := <<"bar">>},
                                         #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {{json, R}} <- Rows2])
                      end),
               ?_test(begin
-                         #pg_result{command=create} =
+                         #{command := create} =
                              pgo:query(default, "create table tmp_b (id integer primary key, a_json jsonb, b_json json)"),
-                         #pg_result{command=select,rows=Rows} =
+                         #{command := select,rows := Rows} =
                              pgo:query(default, "select '[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]'::jsonb"),
                          ?assertMatch([[#{<<"a">> := <<"foo">>},
                                         #{<<"b">> := <<"bar">>},
                                         #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {{jsonb, R}} <- Rows]),
 
-                         #pg_result{command=insert} = pgo:query(default, "insert into tmp_b (id, a_json) values ($1, $2)",
+                         #{command := insert} = pgo:query(default, "insert into tmp_b (id, a_json) values ($1, $2)",
                                                                 [1, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>]),
-                         #pg_result{command=select, rows=Rows1} = pgo:query(default, "select a_json from tmp_b where id = 1"),
+                         #{command := select, rows := Rows1} = pgo:query(default, "select a_json from tmp_b where id = 1"),
                          ?assertMatch([[#{<<"a">> := <<"foo">>},
                                         #{<<"b">> := <<"bar">>},
                                         #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {{jsonb, R}} <- Rows1])
@@ -1034,24 +1033,24 @@ custom_enum_test_() ->
              PoolPid
      end,
      fun(PoolPid) ->
-             #pg_result{command=drop} = pgo:query("DROP TYPE mood;"),
+             #{command := drop} = pgo:query("DROP TYPE mood;"),
              kill_sup(PoolPid)
      end,
      fun(_) ->
              [
               ?_test(begin
-                         %% #pg_result{command=commit} = pgo:query("BEGIN"),
-                         #pg_result{command=create} = pgo:query("CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy');"),
-                         %% ?assertMatch(#pg_result{command=select, rows=[{{MoodOID, <<"sad">>}}]}
+                         %% #{command := commit} = pgo:query("BEGIN"),
+                         #{command := create} = pgo:query("CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy');"),
+                         %% ?assertMatch(#{command := select, rows := [{{MoodOID, <<"sad">>}}]}
                          %%              when is_integer(MoodOID), pgo:query("select 'sad'::mood;")),
-                         %% ?assertMatch(#pg_result{command=select, rows=[{{MoodOID, <<"sad">>}}]}
+                         %% ?assertMatch(#{command := select, rows := [{{MoodOID, <<"sad">>}}]}
                          %%              when is_integer(MoodOID), pgo:query("select 'sad'::mood;", [])),
-                         %% #pg_result{command=commit} = pgo:query("COMMIT"),
-                         ?assertMatch(#pg_result{command=select, rows=[{{mood, <<"sad">>}}]}, pgo:query("select 'sad'::mood;", [])),
-                         ?assertMatch(#pg_result{command=select, rows=[{{mood, <<"sad">>}}]}, pgo:query("select 'sad'::mood;", [])),
-                         ?assertMatch(#pg_result{command=select, rows=[{{mood, <<"sad">>}}]}, pgo:query("select $1::mood;", [<<"sad">>])),
-                         ?assertMatch(#pg_result{command=select, rows=[{{array, [{mood, <<"sad">>}]}}]}, pgo:query("select '{sad}'::mood[];")),
-                         ?assertMatch(#pg_result{command=select, rows=[{{array, [{mood, <<"sad">>}]}}]}, pgo:query("select $1::mood[];", [{array, [<<"sad">>]}]))
+                         %% #{command := commit} = pgo:query("COMMIT"),
+                         ?assertMatch(#{command := select, rows := [{{mood, <<"sad">>}}]}, pgo:query("select 'sad'::mood;", [])),
+                         ?assertMatch(#{command := select, rows := [{{mood, <<"sad">>}}]}, pgo:query("select 'sad'::mood;", [])),
+                         ?assertMatch(#{command := select, rows := [{{mood, <<"sad">>}}]}, pgo:query("select $1::mood;", [<<"sad">>])),
+                         ?assertMatch(#{command := select, rows := [{{array, [{mood, <<"sad">>}]}}]}, pgo:query("select '{sad}'::mood[];")),
+                         ?assertMatch(#{command := select, rows := [{{array, [{mood, <<"sad">>}]}}]}, pgo:query("select $1::mood[];", [{array, [<<"sad">>]}]))
                      end)
              ]
      end}.

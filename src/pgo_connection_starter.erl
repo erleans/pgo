@@ -6,8 +6,6 @@
          callback_mode/0,
          connect/3]).
 
--include("pgo.hrl").
-
 -record(data, {sup  :: pid(),
                pool :: atom(),
                size :: integer()}).
