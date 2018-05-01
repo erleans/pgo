@@ -221,6 +221,8 @@ encode_uuid(<<>>) ->
     <<-1:32/integer>>;
 encode_uuid(null) ->
     <<-1:32/integer>>;
+encode_uuid(<<U:128>>) ->
+    <<16:1/big-signed-unit:32, U:128>>;
 encode_uuid(U) when is_integer(U) ->
     <<16:1/big-signed-unit:32, U:128>>;
 encode_uuid(U) when is_binary(U) ->
@@ -790,12 +792,16 @@ decode_value_text(?POLYGONOID, Value, _OIDMap, _DecodeOptions) ->
     {Points, []} = decode_points_text($(, $), binary_to_list(Value)),
     {polygon, Points};
 decode_value_text(?VOIDOID, _Value, _OIDMap, _DecodeOptions) -> null;
-decode_value_text(TypeOID, Value, _OIDMap, _DecodeOptions) when TypeOID =:= ?TEXTOID
-            orelse TypeOID =:= ?UUIDOID
-            orelse TypeOID =:= ?NAMEOID
-            orelse TypeOID =:= ?BPCHAROID
-            orelse TypeOID =:= ?VARCHAROID
-             -> Value;
+decode_value_text(?UUIDOID, Value, _OIDMap, _DecodeOptions) ->
+    %% bad, but just don't use simple query which uses the text protocol :)
+    Hex = binary:replace(Value, <<"-">>, <<>>, [global]),
+    {ok, [D], _} = io_lib:fread("~16u", binary_to_list(Hex)),
+    <<D:128>>;
+decode_value_text(TypeOID, Value, _OIDMap, _DecodeOptions) when TypeOID =:= ?TEXTOID orelse
+                                                                TypeOID =:= ?NAMEOID orelse
+                                                                TypeOID =:= ?BPCHAROID orelse
+                                                                TypeOID =:= ?VARCHAROID ->
+    Value;
 decode_value_text(?JSONOID, Value, _, _) ->
     {json, Value};
     %% jsx:decode(Value, [return_maps]);
@@ -942,9 +948,11 @@ decode_value_bin(?FLOAT8OID, <<127,248,0,0,0,0,0,0>>, _OIDMap, _DecodeOptions) -
 decode_value_bin(?FLOAT8OID, <<127,240,0,0,0,0,0,0>>, _OIDMap, _DecodeOptions) -> 'Infinity';
 decode_value_bin(?FLOAT8OID, <<255,240,0,0,0,0,0,0>>, _OIDMap, _DecodeOptions) -> '-Infinity';
 decode_value_bin(?UUIDOID, Value, _OIDMap, _DecodeOptions) ->
-    <<UUID_A:32/integer, UUID_B:16/integer, UUID_C:16/integer, UUID_D:16/integer, UUID_E:48/integer>> = Value,
-    UUIDStr = io_lib:format("~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b", [UUID_A, UUID_B, UUID_C, UUID_D, UUID_E]),
-    list_to_binary(UUIDStr);
+    %% <<UUID_A:32/integer, UUID_B:16/integer, UUID_C:16/integer, UUID_D:16/integer, UUID_E:48/integer>> = Value,
+    %% UUIDStr = io_lib:format("~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b", [UUID_A, UUID_B, UUID_C, UUID_D, UUID_E]),
+    %% list_to_binary(UUIDStr);
+    %% io:format("Value ~p~n", [Value]),
+    Value;
 decode_value_bin(?DATEOID, <<Date:32/signed-integer>>, _OIDMap, _DecodeOptions) -> calendar:gregorian_days_to_date(Date + ?POSTGRESQL_GD_EPOCH);
 decode_value_bin(?TIMEOID, TimeBin, _OIDMap, DecodeOptions) -> decode_time(TimeBin, proplists:get_bool(integer_datetimes, DecodeOptions), DecodeOptions);
 decode_value_bin(?TIMETZOID, TimeTZBin, _OIDMap, DecodeOptions) -> decode_time_tz(TimeTZBin, proplists:get_bool(integer_datetimes, DecodeOptions), DecodeOptions);

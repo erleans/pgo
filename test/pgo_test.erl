@@ -8,6 +8,9 @@
 %%%% CREATE DATABASE test WITH OWNER=test;
 %%%%
 
+-define(UUID, <<114,127,66,166,230,160,66,35,155,114,106,94,183,67,106,181>>).
+-define(TXT_UUID, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>).
+
 -define(UNTIL(X), (fun Until(I) when I =:= 10 -> erlang:error(fail);
                        Until(I) -> case X of true -> ok; false -> timer:sleep(10), Until(I+1) end end)(0)).
 
@@ -157,9 +160,13 @@ types_test_() ->
                ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                                                                    [6, null, null, <<"And in the end, the love you take is equal to the love you make">>, null, null, null]))
               },
-              {"Insert uuid",
+              {"Insert string uuid",
                ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
-                                                                   [7, null, null, null, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>, null, null]))
+                                                                   [7, null, null, null, ?UUID, null, null]))
+              },
+              {"Insert byte array uuid",
+               ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
+                                                                   [21, null, null, null, <<236,0,0,208,169,204,65,147,163,9,107,147,233,112,253,222>>, null, null]))
               },
               {"Insert bytea",
                ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
@@ -175,7 +182,7 @@ types_test_() ->
               },
               {"Insert all",
                ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
-                                                                   [10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>, <<"deadbeef">>, 3.1415]))
+                                                                   [10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, ?UUID, <<"deadbeef">>, 3.1415]))
               },
               {"Select values (10)",
                ?_test(begin
@@ -184,7 +191,7 @@ types_test_() ->
                           #{command := select, rows := [Row]} = R,
                           ?assertMatch({10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, _UUID, <<"deadbeef">>, _Float}, Row),
                           {10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, UUID, <<"deadbeef">>, Float} = Row,
-                          ?assertMatch(<<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>, UUID),
+                          ?assertMatch(?UUID, UUID),
                           ?assert(Float > 3.1413),
                           ?assert(Float < 3.1416)
                       end)
@@ -196,7 +203,7 @@ types_test_() ->
                           #{command := select, rows := [Row]} = R,
                           ?assertMatch({10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, _UUID, <<"deadbeef">>, _Float}, Row),
                           {10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, UUID, <<"deadbeef">>, Float} = Row,
-                          ?assertMatch(<<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>, UUID),
+                          ?assertMatch(?UUID, UUID),
                           ?assert(Float > 3.1413),
                           ?assert(Float < 3.1416)
                       end)
@@ -225,23 +232,23 @@ types_test_() ->
               },
               {"Insert uuid in lowercase",
                ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
-                                                                   [16, null, null, null, <<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>, null, null]))
+                                                                   [16, null, null, null, ?UUID, null, null]))
               },
               {"Insert uc uuid in text column",
                ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
-                                                                   [17, null, null, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>, null, null, null]))
+                                                                   [17, null, null, ?TXT_UUID, null, null, null]))
               },
               {"Insert lc uuid in text column",
                ?_assertMatch(#{command := insert}, pgo:query(default, "insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
-                                                                   [18, null, null, <<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>, null, null, null]))
+                                                                   [18, null, null, ?TXT_UUID, null, null, null]))
               },
               {"Select text uuid (17 \& 18)",
                ?_test(begin
                           R = pgo:query(default, "select a_text from types where id IN ($1, $2) order by id", [17, 18]),
                           ?assertMatch(#{command := select, rows := [_Row17, _Row18]}, R),
                           #{command := select, rows := [Row17, Row18]} = R,
-                          ?assertMatch({<<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>}, Row17),
-                          ?assertMatch({<<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>}, Row18)
+                          ?assertMatch({?TXT_UUID}, Row17),
+                          ?assertMatch({?TXT_UUID}, Row18)
                       end)
               }
              ]
