@@ -11,7 +11,7 @@
 -define(UNTIL(X), (fun Until(I) when I =:= 10 -> erlang:error(fail);
                        Until(I) -> case X of true -> ok; false -> timer:sleep(10), Until(I+1) end end)(0)).
 
-all() -> [checkout_checkin, checkout_break, checkout_kill].
+all() -> [checkout_checkin, checkout_break, checkout_kill, checkout_query_crash].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
@@ -20,8 +20,18 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
-init_per_testcase(checkout_break, Config) ->
+init_per_testcase(T, Config) when T =:= checkout_break ->
     Name = pool_break,
+    pgo:start_pool(Name, [{size, 1},
+                          {postgres, [{database, ?DATABASE},
+                                      {user, ?USER}]}]),
+
+    Tid = pgo_pool:tid(Name),
+    ?UNTIL((catch ets:info(Tid, size)) =:= 1),
+
+    [{pool_name, Name} | Config];
+init_per_testcase(T, Config) when T =:= checkout_query_crash ->
+    Name = pool_query_crash,
     pgo:start_pool(Name, [{size, 1},
                           {postgres, [{database, ?DATABASE},
                                       {user, ?USER}]}]),
@@ -98,5 +108,23 @@ checkout_kill(Config) ->
 
     erlang:exit(Pid1, kill),
     ?UNTIL((catch ets:info(Tid, size)) =:= 10),
+
+    ok.
+
+%% regression test. this would fail with `unexpected message` response to the create query
+checkout_query_crash(Config) ->
+    Name = ?config(pool_name, Config),
+    Tid = pgo_pool:tid(Name),
+
+    {ok, _Ref, Conn} = pgo:checkout(Name),
+    try
+        pgo:query(Conn, "select $1::uuid", [<<1,2,3,4,5>>])
+    after
+        pgo:checkin(_Ref, Conn)
+    end,
+
+    ?UNTIL((catch ets:info(Tid, size)) =:= 1),
+    {ok, _Ref1, Conn1} = pgo:checkout(Name),
+    ?assertMatch(#{command := create}, pgo:query(Conn1, "create temporary table foo (_id integer)", [])),
 
     ok.

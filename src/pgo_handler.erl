@@ -187,8 +187,8 @@ pgsql_setup_startup(Socket, Options) ->
         Timezone -> [{<<"timezone">>, Timezone}]
     end,
     StartupMessage = pgo_protocol:encode_startup_message([{<<"user">>, User},
-                                                            {<<"database">>, Database},
-                                                            {<<"application_name">>, ApplicationName} | TZOpt]),
+                                                          {<<"database">>, Database},
+                                                          {<<"application_name">>, ApplicationName} | TZOpt]),
     case gen_tcp:send(Socket, StartupMessage) of
         ok ->
             case receive_message(Socket) of
@@ -322,7 +322,9 @@ encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, IntegerDateTi
         SinglePacket = [BindMessage, DescribeMessage, ExecuteMessage, SyncOrFlushMessage],
         {ok, SinglePacket}
     catch throw:Exception ->
-        {error, Exception}
+            {error, Exception};
+          _:Exception ->
+            {error, Exception}
     end.
 
 %% requires_statement_description(_Parameters) ->
