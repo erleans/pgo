@@ -59,3 +59,8 @@ $ rebar3 eunit
 Much is owed to https://github.com/semiocast/pgsql (especially for protocol step logic) and https://github.com/epgsql/epgsql/ (especially for some decoding logic).
 
 The pool implementation is owed to James Fish's found in `db_connection` [PR 108](https://github.com/elixir-ecto/db_connection/pull/108). While [db_connection](https://github.com/elixir-ecto/db_connection) and [postgrex](https://github.com/elixir-ecto/postgrex) as a whole were both used as inspiration as well.
+
+## Requirements
+Erlang/OTP 20 and above. 
+Queries will not run on OTP 19 and below because some of the required functions are defined only in OTP 20+. 
+The project also depends on merl which is built in by default as of OTP 18. 
