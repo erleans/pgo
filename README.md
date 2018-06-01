@@ -14,6 +14,12 @@ PG...Oh god not nother Postgres client in Erlang...
 * Instrumented with [OpenCensus](https://github.com/census-instrumentation/opencensus-erlang)
 * Mix apps currently too hard to use in a Rebar3 project. 
 
+## Requirements
+
+Erlang/OTP 20 and above. Queries will not run on OTP 19 and below because some of the required functions are defined only in OTP 20+.
+
+This project also depends on merl which is built in by default as of OTP 18.
+
 ## Use
 
 Pools defined in the `pgo` application's environment will be started on boot. You can also add pools dynamically with `pgo:start_pool/3`.
