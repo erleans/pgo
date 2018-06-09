@@ -120,7 +120,8 @@ transaction(Pool, Fun) ->
 %% @doc Returns a connection from the pool.
 -spec checkout(pool()) -> {ok, pool_ref(), conn()} | {error, any()}.
 checkout(Pool) ->
-    pgo_pool:checkout(Pool, [{queue, false}]).
+    {ok, Ref, _, Conn} = pgo_pool:checkout(Pool, [{queue, false}]),
+    {ok, Ref, Conn}.
 
 %% @doc Return a checked out connection to its pool
 -spec checkin(pool_ref(), conn()) -> ok.

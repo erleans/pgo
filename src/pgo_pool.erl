@@ -7,7 +7,7 @@
          checkin/3,
          disconnect/4,
          stop/4,
-         update/3,
+         update/4,
          format_error/1]).
 
 -export([init/1,
@@ -48,11 +48,13 @@ checkout(Pool, Opts) ->
     MaybeQueue = proplists:get_value(queue, Opts, ?QUEUE),
     Now = erlang:monotonic_time(?TIME_UNIT),
     Timeout = abs_timeout(Now, Opts),
-    case gen_server:call(Pool, {checkout, Now, MaybeQueue}, infinity) of
-        {ok, Holder} ->
-            recv_holder(Holder, Now, Timeout);
-        {error, _Err} = Error ->
-            Error
+    case checkout(Pool, MaybeQueue, Now, Timeout) of
+        Ok={ok, _, _, _} ->
+            Ok;
+        Error={error, _} ->
+            Error;
+        {exit, Reason} ->
+            exit({Reason, {?MODULE, checkout, [Pool, Opts]}})
     end.
 
 checkin({Pool, Ref, Deadline, Holder}, Conn, _) ->
@@ -68,8 +70,8 @@ stop({Pool, Ref, Deadline, Holder}, Err, Conn, _) ->
     cancel_deadline(Deadline),
     checkin_holder(Holder, Pool, Conn, {stop, Ref, Err}).
 
-update(Pool, Ref, State) ->
-    Holder = start_holder(Pool, Ref, State),
+update(Pool, Ref, Mod, State) ->
+    Holder = start_holder(Pool, Ref, Mod, State),
     Now = erlang:monotonic_time(?TIME_UNIT),
     checkin_holder(Holder, Pool, State, {checkin, Ref, Now}),
     Holder.
@@ -96,25 +98,27 @@ init({Pool, Opts}) ->
     {ok, {busy, Queue, Codel1}}.
 
 handle_call(tid, _From, {_, Queue, _} = D) ->
-    {reply, Queue, D};
-handle_call({checkout, Now, MaybeQueue}, From, {busy, Queue, _} = Busy) ->
+    {reply, Queue, D}.
+
+handle_info({db_connection, From, {checkout, Now, MaybeQueue}}, Busy={busy, Queue, _}) ->
     case MaybeQueue of
       true ->
         ets:insert(Queue, {{Now, erlang:unique_integer(), From}}),
         {noreply, Busy};
       false ->
-        {reply, {error, none_available_no_queuing}, Busy}
-    end;
-handle_call({checkout, _Now, _MaybeQueue} = Checkout, From, Ready) ->
-    {ready, Queue, Codel} = Ready,
+        Message = "connection not available and queuing is disabled",
+        gen_server:reply(From, {error, Message}),
+        {noreply, Busy}
+  end;
+handle_info(Checkout={db_connection, From, {checkout, _Now, _MaybeQueue}}, Ready) ->
+    {ready, Queue, _Codel} = Ready,
     case ets:first(Queue) of
-        {_Time, Holder} = Key ->
-            checkout_holder(Holder, From, Queue) andalso ets:delete(Queue, Key),
-            {noreply, Ready};
-        '$end_of_table' ->
-            handle_call(Checkout, From, {busy, Queue, Codel})
-    end.
-
+      Key={_Time, Holder} ->
+        checkout_holder(Holder, From, Queue) andalso ets:delete(Queue, Key),
+        {noreply, Ready};
+      '$end_of_table' ->
+        handle_info(Checkout, erlang:setelement(1, Ready, busy))
+    end;
 handle_info({'ETS-TRANSFER', Holder, _Pid, Queue}, {_, Queue, _} = Data) ->
     disconnect_holder(Holder, {error, client_disconnected}),
     {noreply, Data};
@@ -295,36 +299,72 @@ start_idle(Now, LastSent, Codel=#{idle_interval := Interval}) ->
     Idle = erlang:start_timer(Timeout, self(), {Timeout, LastSent}, [{abs, true}]),
     Codel#{idle => Idle}.
 
-start_holder(Pool, Ref, State) ->
+start_holder(Pool, Ref, Mod, State) ->
     %% Insert before setting heir so that pool can't receive empty table
     Holder = ets:new(?MODULE, [public, ordered_set]),
-    true = ets:insert_new(Holder, {?HOLDER_KEY, self(), undefined, State}),
+    true = ets:insert_new(Holder, {?HOLDER_KEY, self(), undefined, Mod, State}),
     ets:setopts(Holder, {heir, Pool, Ref}),
     Holder.
 
-checkout_holder(Holder, {Pid, _} = From, Ref) ->
+checkout(Pool, Queue, Start, Timeout) ->
+    case erlang:whereis(Pool) of
+      Pid when node(Pid) == node() ->
+        checkout_call(Pid, Queue, Start, Timeout);
+      Pid when node(Pid) =/= node() ->
+        {exit, {badnode, node(Pid)}};
+      {_Name, Node} ->
+        {exit, {badnode, Node}};
+      undefined ->
+        {exit, noproc}
+    end.
+
+checkout_call(Pid, Queue, Start, Timeout) ->
+    MRef = erlang:monitor(process, Pid),
+    erlang:send(Pid, {db_connection, {self(), MRef}, {checkout, Start, Queue}}),
+    receive
+        {'ETS-TRANSFER', Holder, Owner, {MRef, Ref}} ->
+            erlang:demonitor(MRef, [flush]),
+            Deadline = start_deadline(Timeout, Owner, Ref, Holder, Start),
+            PoolRef = {Owner, Ref, Deadline, Holder},
+            checkout_info(Holder, PoolRef);
+        {MRef, Reply} ->
+            erlang:demonitor(MRef, [flush]),
+            Reply;
+        {'DOWN', MRef, _, _, Reason} ->
+            {exit, Reason}
+    end.
+
+%% [{_, _, _, State}] = ets:lookup(Holder, ?HOLDER_KEY),
+%%             {ok, {Pool, Ref, Deadline, Holder}, State}
+
+checkout_info(Holder, PoolRef) ->
+    try ets:lookup(Holder, ?HOLDER_KEY) of
+        [{_, _, _, Mod, State}] ->
+            {ok, PoolRef, Mod, State}
+    catch
+      _:_ ->
+        %% Deadline could hit and by handled pool before using connection
+        Msg = "connection not available because deadline reached while in queue",
+        {error, Msg}
+    end.
+
+checkout_holder(Holder, {Pid, MRef}, Ref) ->
     try
-        ets:give_away(Holder, Pid, Ref),
-        gen_server:reply(From, {ok, Holder}),
-        true
+        ets:give_away(Holder, Pid, {MRef, Ref})
     catch
         error:badarg ->
-            gen_server:reply(From, {error, give_away_failed}),
             false
     end.
 
-recv_holder(Holder, Start, Timeout) ->
-    receive
-        {'ETS-TRANSFER', Holder, Pool, Ref} ->
-            Deadline = start_deadline(Timeout, Pool, Ref, Holder, Start),
-            [{_, _, _, State}] = ets:lookup(Holder, ?HOLDER_KEY),
-            {ok, {Pool, Ref, Deadline, Holder}, State}
-    end.
-
 checkin_holder(Holder, Pool, State, Msg) ->
-    ets:update_element(Holder, ?HOLDER_KEY, [{3, undefined}, {4, State}]),
-    ets:give_away(Holder, Pool, Msg),
-    ok.
+    try
+        ets:update_element(Holder, ?HOLDER_KEY, [{3, undefined}, {4, State}]),
+        ets:give_away(Holder, Pool, Msg),
+        ok
+    catch
+        error:badarg ->
+            ok
+    end.
 
 disconnect_holder(Holder, Err) ->
     delete_holder(Holder, Err).

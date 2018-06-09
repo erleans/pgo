@@ -87,7 +87,7 @@ disconnected(EventType, _, Data=#data{broker=Broker,
                                                                   ; EventType =:= state_timeout ->
     try pgo_handler:pgsql_open(Broker, DBOptions) of
         {ok, Conn} ->
-            Holder = pgo_pool:update(Pool, Queue, Conn),
+            Holder = pgo_pool:update(Pool, Queue, ?MODULE, Conn),
             {_, B1} = backoff:succeed(B),
             {next_state, enqueued, Data#data{conn=Conn,
                                              holder=Holder,
@@ -123,7 +123,7 @@ handle_event(cast, {ping, Holder}, Data=#data{pool=Pool,
                                               queue=Queue,
                                               conn=Conn}) ->
     %% TODO: do ping
-    NewHolder = pgo_pool:update(Pool, Queue, Conn),
+    NewHolder = pgo_pool:update(Pool, Queue, ?MODULE, Conn),
     {keep_state, Data#data{holder=NewHolder}};
 handle_event(cast, {stop, Holder}, Data=#data{holder=Holder,
                                               conn=Conn}) ->
