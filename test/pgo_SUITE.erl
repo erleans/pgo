@@ -18,6 +18,8 @@ init_per_suite(Config) ->
     Config.
 
 end_per_suite(_Config) ->
+    application:stop(pgo),
+    application:stop(opencensus),
     ok.
 
 init_per_testcase(T, Config) when T =:= checkout_break ->
