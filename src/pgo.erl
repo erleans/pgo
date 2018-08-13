@@ -104,9 +104,9 @@ transaction(Pool, Fun) ->
                 #{command := 'commit'} = pgo_handler:simple_query(Conn, "COMMIT"),
                 Result
             catch
-                Class:Reason ->
+                ?WITH_STACKTRACE(T, R, S)
                     pgo_handler:simple_query(Conn, "ROLLBACK"),
-                    erlang:raise(Class, Reason, erlang:get_stacktrace())
+                    erlang:raise(T, R, S)
             after
                 checkin(Ref, Conn),
                 erase(pgo_transaction_connection),

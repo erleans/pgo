@@ -1,3 +1,9 @@
+-ifdef('OTP_RELEASE').
+-define(WITH_STACKTRACE(T, R, S), T:R:S ->).
+-else.
+-define(WITH_STACKTRACE(T, R, S), T:R -> S = erlang:get_stacktrace(),).
+-endif.
+
 -record(conn, {owner :: pid(),
                socket :: gen_tcp:socket(),
                pool :: atom()}).
