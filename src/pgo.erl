@@ -53,14 +53,14 @@ query(Query) ->
 %% @doc Executes a simple query either on a Pool or a provided connection.
 -spec query(atom() | pg_pool:conn(), iodata()) -> result().
 query(Conn=#conn{}, Query) ->
-    pgo_handler:simple_query(Conn, Query);
+    pgo_handler:extended_query(Conn, Query, []);
 query(Pool, Query) when is_atom(Pool) ->
     SpanCtx = oc_trace:start_span(<<"pgo:query/2">>, ocp:current_span_ctx(),
                                   #{attributes => #{<<"query">> => Query}}),
     case checkout(Pool) of
         {ok, Ref, Conn} ->
             try
-                pgo_handler:simple_query(Conn, Query)
+                pgo_handler:extended_query(Conn, Query, [])
             after
                 checkin(Ref, Conn),
                 oc_trace:finish_span(SpanCtx)
@@ -104,14 +104,14 @@ transaction(Pool, Fun) ->
             case checkout(Pool) of
                 {ok, Ref, Conn} ->
                     try
-                        #{command := 'begin'} = pgo_handler:simple_query(Conn, "BEGIN"),
+                        #{command := 'begin'} = pgo_handler:extended_query(Conn, "BEGIN", []),
                         put(pgo_transaction_connection, Conn),
                         Result = Fun(Conn),
-                        #{command := commit} = pgo_handler:simple_query(Conn, "COMMIT"),
+                        #{command := commit} = pgo_handler:extended_query(Conn, "COMMIT", []),
                         Result
                     catch
                         ?WITH_STACKTRACE(T, R, S)
-                        pgo_handler:simple_query(Conn, "ROLLBACK"),
+                        pgo_handler:extended_query(Conn, "ROLLBACK", []),
                         erlang:raise(T, R, S)
                     after
                         checkin(Ref, Conn),

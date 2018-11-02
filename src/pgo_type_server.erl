@@ -24,7 +24,7 @@ reload_cast(Pid) ->
 
 init([Pool, DBOptions]) ->
     erlang:process_flag(trap_exit, true),
-    ets:new(Pool, [named_table, protected, {read_concurrency, true}]),
+    ets:new(Pool, [named_table, protected]),
     {ok, ready, #data{pool=Pool, db_options=DBOptions},
      {next_event, internal, load}}.
 
@@ -53,7 +53,9 @@ terminate(_, _, #data{pool=Pool}) ->
 
 load(Pool, LastReload, RequestTime, DBOptions) when LastReload < RequestTime ->
     {ok, Conn} = pgo_handler:pgsql_open(Pool, DBOptions),
-    #{rows := Oids} = pgo_handler:simple_query(Conn, "SELECT oid, typname FROM pg_type"),
+    put(no_reload, true),
+    #{rows := Oids} = pgo_handler:extended_query(Conn, "SELECT oid, typname FROM pg_type", []),
+    erase(no_reload),
     pgo_handler:close(Conn),
     [ets:insert(Pool, {Oid, binary_to_atom(Typename, utf8)}) || {Oid, Typename} <- Oids];
 load(_, _, _, _) ->

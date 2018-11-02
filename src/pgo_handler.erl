@@ -4,7 +4,6 @@
 -include("pgo_internal.hrl").
 
 -export([pgsql_open/2,
-         simple_query/2,
          extended_query/3,
          close/1]).
 
@@ -56,60 +55,9 @@
         % expect ready_for_query
     |   {result, any()}.
 
-%%--------------------------------------------------------------------
-%% @doc Perform a simple query.
-%%
-%% -spec simple_query(iodata(), pgsql_connection()) ->
-%%     result_tuple() | {error, any()} | [result_tuple() | {error, any()}].
-simple_query(Conn=#conn{socket=Socket}, Query) ->
-    QueryMessage = pgo_protocol:encode_query_message(Query),
-    case gen_tcp:send(Socket, QueryMessage) of
-        ok ->
-            pgsql_simple_query_loop([], [], [], Conn);
-        {error, _} = _SendQueryError ->
-            ok
-    end.
-
-pgsql_simple_query_loop(Result0, Acc, QueryOptions, Conn=#conn{pool=Pool,
-                                                               socket=Socket}) ->
-    case receive_message(Socket) of
-        {ok, #parameter_status{name = _Name, value = _Value}} ->
-            %% State1 = handle_parameter(Name, Value, State0),
-            pgsql_simple_query_loop(Result0, Acc, QueryOptions, Conn);
-        {ok, #row_description{fields = Fields}} when Result0 =:= [] ->
-            pgsql_simple_query_loop({rows, Fields, []}, Acc, QueryOptions, Conn);
-        {ok, #data_row{values = Values}} when is_tuple(Result0) andalso element(1, Result0) =:= rows ->
-            {rows, Fields, AccRows0} = Result0,
-            DecodedRow = pgo_protocol:decode_row(Fields, Values, Pool, QueryOptions),
-            AccRows1 = [DecodedRow | AccRows0],
-            pgsql_simple_query_loop({rows, Fields, AccRows1}, Acc, QueryOptions, Conn);
-        {ok, #command_complete{command_tag = Tag}} ->
-            {Command, NumRows} = decode_tag(Tag),
-            ResultRows = case Result0 of
-                {rows, _Descs, AccRows} -> lists:reverse(AccRows);
-                [] -> []
-            end,
-            Acc1 = [#{command => Command, num_rows => NumRows, rows => ResultRows} | Acc],
-            pgsql_simple_query_loop([], Acc1, QueryOptions, Conn);
-        {ok, #empty_query_response{}} ->
-            pgsql_simple_query_loop(Result0, Acc, QueryOptions, Conn);
-        {ok, #error_response{fields = Fields}} ->
-            Error = {error, {pgo_error, Fields}},
-            Acc1 = [Error | Acc],
-            pgsql_simple_query_loop([], Acc1, QueryOptions, Conn);
-        {ok, #ready_for_query{}} ->
-            case Acc of
-                [SingleResult] -> SingleResult;
-                MultipleResults -> MultipleResults
-            end;
-        {ok, Message} ->
-            {error, {unexpected_message, Message}};
-        {error, _} = ReceiveError ->
-            ReceiveError
-    end.
-
 extended_query(Socket, Query, Parameters) ->
     pgsql_extended_query(Socket, Query, Parameters, fun(R, _) -> R end, []).
+
 
 close(undefined) ->
     ok;
@@ -278,19 +226,20 @@ pgsql_extended_query(Conn=#conn{socket=Socket,
     QueryOptions = [],
     ParseMessage = pgo_protocol:encode_parse_message("", Query, []),
     % We ask for a description of parameters only if required.
-    PacketT = case pgo_query_cache:lookup(Pool, Query) of
-        not_found ->
-            DescribeStatementMessage = pgo_protocol:encode_describe_message(statement, ""),
-            FlushMessage = pgo_protocol:encode_flush_message(),
-            LoopState0 = {parse_complete_with_params, Parameters},
-            {ok, [ParseMessage, DescribeStatementMessage, FlushMessage], LoopState0};
-        DataTypes ->
+    PacketT = case catch(pgo_query_cache:lookup(Pool, Query)) of
+       DataTypes when is_list(DataTypes) ->
             case encode_bind_describe_execute(Parameters, DataTypes, Pool, IntegerDateTimes) of
                 {ok, BindExecute} ->
                     {ok, [ParseMessage, BindExecute], parse_complete};
                 {error, _} = Error ->
                     Error
-            end
+            end;
+        not_found ->
+            DescribeStatementMessage = pgo_protocol:encode_describe_message(statement, ""),
+            FlushMessage = pgo_protocol:encode_flush_message(),
+            LoopState0 = {parse_complete_with_params, Parameters},
+            {ok, [ParseMessage, DescribeStatementMessage, FlushMessage], LoopState0}
+
     end,
     case PacketT of
         {ok, SinglePacket, LoopState} ->
@@ -517,8 +466,13 @@ decode_object(Object) ->
 %% @doc Update the OID Map out of band, opening a new connection.
 %%
 oob_update_oid_map_from_fields_if_required(Conn, Fields) ->
-    OIDs = [OID || #row_description_field{data_type_oid = OID} <- Fields],
-    oob_update_oid_map_if_required(Conn, OIDs).
+    case get(no_reload) of
+        true ->
+            ok;
+        _ ->
+            OIDs = [OID || #row_description_field{data_type_oid = OID} <- Fields],
+            oob_update_oid_map_if_required(Conn, OIDs)
+end.
 
 oob_update_oid_map_if_required(Conn=#conn{pool=Pool}, OIDs) ->
     Required = lists:any(fun(OID) ->
