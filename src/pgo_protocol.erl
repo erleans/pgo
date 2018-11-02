@@ -32,6 +32,20 @@
 -define(POSTGRESQL_GD_EPOCH, 730485). % ?_value(calendar:date_to_gregorian_days({2000,1,1}))).
 -define(POSTGRESQL_GS_EPOCH, 63113904000). % ?_value(calendar:datetime_to_gregorian_seconds({{2000,1,1}, {0,0,0}}))).
 
+-define(POSTGRES_EPOC_JDATE, 2451545).
+-define(POSTGRES_EPOC_USECS, 946684800000000).
+
+-define(MINS_PER_HOUR, 60).
+-define(SECS_PER_MINUTE, 60).
+
+-define(SECS_PER_DAY, 86400.0).
+
+-define(USECS_PER_DAY, 86400000000).
+-define(USECS_PER_HOUR, 3600000000).
+-define(USECS_PER_MINUTE, 60000000).
+-define(USECS_PER_SEC, 1000000).
+
+
 %%====================================================================
 %% Public API
 %%====================================================================
@@ -122,6 +136,25 @@ encode_bind_message(PortalName, StatementName, Parameters, ParametersDataTypes, 
     PacketLen = iolist_size(Packet) + 4,
     [<<$B, PacketLen:32/integer>> | Packet].
 
+encode_numeric('NaN', _, _) ->
+    <<0:16/unsigned, 0:16, 16#C000:16/unsigned, 0:16/unsigned>>;
+encode_numeric(Float, _Weight, Scale) ->
+    Sign = case Float > 0 of
+               true -> 16#0000;
+               false -> 16#4000
+           end,
+    IntegerPart = trunc(Float),
+    DecimalPart = trunc((Float - IntegerPart) * math:pow(10, Scale)),
+
+    Weight = length(integer_to_list(IntegerPart)),
+    Scale1 = length(integer_to_list(DecimalPart)),
+
+    Digits = [I - 48 || I <- integer_to_list(IntegerPart)] ++
+        [I - 48 || I <- integer_to_list(DecimalPart)],
+    Bin = [<<I:16/unsigned-integer>> || I <- Digits],
+    Len = length(Digits),
+    [<<Len:16/unsigned, Weight:16/signed, Sign:16/unsigned, Scale1:16/unsigned>> | Bin].
+
 %%--------------------------------------------------------------------
 %% @doc Encode a parameter.
 %% All parameters are currently encoded in text format except binaries that are
@@ -130,6 +163,11 @@ encode_bind_message(PortalName, StatementName, Parameters, ParametersDataTypes, 
 -spec encode_parameter(any(), pgsql_oid() | undefined, atom(), boolean()) -> iodata().
 encode_parameter(null, _Type, _OIDMap, _IntegerDateTimes) ->
     <<-1:32/integer>>;
+encode_parameter({Numeric, Weight, Scale}, ?NUMERICOID, _OIDMap, _IntegerDateTimes) ->
+    D = encode_numeric(Numeric, Weight, Scale),
+    [<<(iolist_size(D)):32>> | D];
+encode_parameter(Numeric, ?NUMERICOID, OIDMap, IntegerDateTimes) ->
+    encode_parameter({Numeric, 8, 5}, ?NUMERICOID, OIDMap, IntegerDateTimes);
 encode_parameter(Float, ?FLOAT8OID, _OIDMap, _IntegerDateTimes) ->
     <<8:32/integer, Float:1/big-float-unit:64>>;
 encode_parameter(Integer, ?INT2OID, _OIDMap, _IntegerDateTimes) when is_integer(Integer) ->
@@ -166,6 +204,14 @@ encode_parameter(Binary, ?JSONOID, _OIDMap, _IntegerDateTimes) ->
 encode_parameter({jsonb, Binary}, _Type, _OIDMap, _IntegerDateTimes) ->
     Size = byte_size(Binary),
     <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
+
+encode_parameter({interval, {T, D, M}}, _, _OIDMap, true) ->
+    <<16:32/integer, (encode_time(T, true)):64, D:32, M:32>>;
+encode_parameter({T, D, M}, ?INTERVALOID, _OIDMap, true) ->
+    <<16:32/integer, (encode_time(T, true)):64, D:32, M:32>>;
+encode_parameter({T, D, M}, ?INTERVALOID, _OIDMap, false) ->
+    <<16:32/integer, (encode_time(T, false)):1/big-float-unit:64, D:32, M:32>>;
+
 encode_parameter(Binary, _Type, _OIDMap, _IntegerDateTimes) when is_binary(Binary) ->
     Size = byte_size(Binary),
     <<Size:32/integer, Binary/binary>>;
@@ -175,35 +221,40 @@ encode_parameter(Integer, ?INT8OID, _OIDMap, _IntegerDateTimes) ->
     <<8:32/integer, Integer:64>>;
 encode_parameter(Integer, _Type, _OIDMap, _IntegerDateTimes) when is_integer(Integer) ->
     <<4:32/integer, Integer:32>>;
+
 encode_parameter(true, _Type, _OIDMap, _IntegerDateTimes) ->
     <<1:32/integer, 1:1/big-signed-unit:8>>;
 encode_parameter(false, _Type, _OIDMap, _IntegerDateTimes) ->
     <<1:32/integer, 0:1/big-signed-unit:8>>;
-encode_parameter({{Year, Month, Day}, {Hour, Min, Sec}}, Type, OIDMap, IntegerDateTimes) when is_float(Sec) ->
-    encode_parameter(lists:flatten(io_lib:format("~4.10.0B-~2.10.0B-~2.10.0BT~2.10.0B:~2.10.0B:~9.6.0f",
-                                                 [Year, Month, Day, Hour, Min, Sec])), Type, OIDMap, IntegerDateTimes);
-encode_parameter({{Year, Month, Day}, {Hour, Min, Sec}}, Type, OIDMap, IntegerDateTimes) ->
-    encode_parameter(lists:flatten(io_lib:format("~4.10.0B-~2.10.0B-~2.10.0BT~2.10.0B:~2.10.0B:~2.10.0B",
-                                                 [Year, Month, Day, Hour, Min, Sec])), Type, OIDMap, IntegerDateTimes);
-encode_parameter({Hour, Min, Sec}, Type, OIDMap, IntegerDateTimes) when is_float(Sec) andalso
-                                                                        Hour >= 0 andalso
-                                                                        Hour < 24 andalso
-                                                                        Min >= 0 andalso
-                                                                        Min < 60 andalso
-                                                                        Sec > 0 andalso
-                                                                        Sec =< 60 ->
-    encode_parameter(lists:flatten(io_lib:format("~2.10.0B:~2.10.0B:~9.6.0f", [Hour, Min, Sec])), Type, OIDMap, IntegerDateTimes);
-encode_parameter({Hour, Min, Sec}, Type, OIDMap, IntegerDateTimes) when Hour >= 0 andalso
-                                                                        Hour < 24 andalso
-                                                                        Min >= 0 andalso
-                                                                        Min < 60 andalso
-                                                                        Sec > 0 andalso
-                                                                        Sec =< 60 ->
-    encode_parameter(lists:flatten(io_lib:format("~2.10.0B:~2.10.0B:~2.10.0B", [Hour, Min, Sec])), Type, OIDMap, IntegerDateTimes);
-encode_parameter({Year, Month, Day}, Type, OIDMap, IntegerDateTimes) when Month > 0 andalso Month =< 12 andalso Day > 0 andalso Day =< 31 ->
-    encode_parameter(lists:flatten(io_lib:format("~4.10.0B-~2.10.0B-~2.10.0B", [Year, Month, Day])), Type, OIDMap, IntegerDateTimes);
-encode_parameter({point, {X,Y}}, _Type, _OIDMap, _IntegerDateTimes) ->
-    <<X:1/big-float-unit:64, Y:1/big-float-unit:64>>;
+
+encode_parameter({point, {X, Y}}, ?POINTOID, _OIDMap, _IntegerDateTimes) ->
+    <<16:32/integer, X:1/big-float-unit:64, Y:1/big-float-unit:64>>;
+encode_parameter({X, Y}, ?POINTOID, _OIDMap, _IntegerDateTimes) ->
+    <<16:32/integer, X:1/big-float-unit:64, Y:1/big-float-unit:64>>;
+
+encode_parameter(T={{_, _, _}, {_, _, _}}, ?TIMESTAMPOID, _OIDMap, true) ->
+    <<8:32/integer, (encode_timestamp(T, true)):64>>;
+encode_parameter(T={{_, _, _}, {_, _, _}}, ?TIMESTAMPOID, _OIDMap, false) ->
+    <<8:32/integer, (encode_timestamp(T, false)):1/big-float-unit:64>>;
+
+encode_parameter(Time, ?TIMEOID, _OIDMap, true) ->
+    <<8:32/integer, (encode_time(Time, true)):64>>;
+encode_parameter(Time, ?TIMEOID, _OIDMap, false) ->
+    <<8:32/integer, (encode_time(Time, false)):1/big-float-unit:64>>;
+
+encode_parameter(Date, ?DATEOID, _OIDMap, _IntegerDateTimes) ->
+    <<4:32/integer, (encode_date(Date) - ?POSTGRES_EPOC_JDATE):32>>;
+
+encode_parameter({Time, Tz}, ?TIMETZOID, _OIDMap, true) ->
+    <<12:32/integer, (encode_time(Time, true)):64, Tz:32>>;
+encode_parameter({Time, Tz}, ?TIMETZOID, _OIDMap, false) ->
+    <<12:32/integer, (encode_time(Time, false)):1/big-float-unit:64, Tz:32>>;
+
+encode_parameter(Timestamp, ?TIMESTAMPTZOID, _OIDMap, true) ->
+    <<(encode_timestamp(Timestamp, true)):64>>;
+encode_parameter(Timestamp, ?TIMESTAMPTZOID, _OIDMap, false) ->
+    <<(encode_timestamp(Timestamp, false)):1/big-float-unit:64>>;
+
 encode_parameter(Binary, _, _OIDMap, _IntegerDateTimes) when is_binary(Binary)
                                                              ; is_list(Binary)->
     Text = unicode:characters_to_binary(Binary, utf8),
@@ -211,6 +262,39 @@ encode_parameter(Binary, _, _OIDMap, _IntegerDateTimes) when is_binary(Binary)
     <<Size:32/integer, Text/binary>>;
 encode_parameter(Value, _Type, _OIDMap, _IntegerDateTimes) ->
     throw({badarg, Value}).
+
+encode_timestamp({Date, Time}, true) ->
+    D = encode_date(Date) - ?POSTGRES_EPOC_JDATE,
+    D * ?USECS_PER_DAY + encode_time(Time, true);
+encode_timestamp({Date, Time}, false) ->
+    D = encode_date(Date) - ?POSTGRES_EPOC_JDATE,
+    D * ?SECS_PER_DAY + encode_time(Time, false).
+
+encode_date({Y, M, D}) ->
+    M2 = case M > 2 of
+        true ->
+            M + 1;
+        false ->
+            M + 13
+    end,
+    Y2 = case M > 2 of
+        true ->
+            Y + 4800;
+        false ->
+            Y + 4799
+    end,
+    C = Y2 div 100,
+    J1 = Y2 * 365 - 32167,
+    J2 = J1 + (Y2 div 4 - C + C div 4),
+    J2 + 7834 * M2 div 256 + D.
+
+encode_time(0, _) ->
+    0;
+encode_time({H, M, S}, true) ->
+    US = trunc(round(S * ?USECS_PER_SEC)),
+    ((H * ?MINS_PER_HOUR + M) * ?SECS_PER_MINUTE) * ?USECS_PER_SEC + US;
+encode_time({H, M, S}, false) ->
+    ((H * ?MINS_PER_HOUR + M) * ?SECS_PER_MINUTE) + S.
 
 encode_array(Elements, ArrayType, OIDMap, IntegerDateTimes) ->
     ElementType = array_type_to_element_type(ArrayType, OIDMap),
@@ -948,16 +1032,16 @@ decode_value_bin(?FLOAT8OID, <<127,248,0,0,0,0,0,0>>, _OIDMap, _DecodeOptions) -
 decode_value_bin(?FLOAT8OID, <<127,240,0,0,0,0,0,0>>, _OIDMap, _DecodeOptions) -> 'Infinity';
 decode_value_bin(?FLOAT8OID, <<255,240,0,0,0,0,0,0>>, _OIDMap, _DecodeOptions) -> '-Infinity';
 decode_value_bin(?UUIDOID, Value, _OIDMap, _DecodeOptions) ->
-    %% <<UUID_A:32/integer, UUID_B:16/integer, UUID_C:16/integer, UUID_D:16/integer, UUID_E:48/integer>> = Value,
-    %% UUIDStr = io_lib:format("~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b", [UUID_A, UUID_B, UUID_C, UUID_D, UUID_E]),
-    %% list_to_binary(UUIDStr);
-    %% io:format("Value ~p~n", [Value]),
-    Value;
+    <<UUID_A:32/integer, UUID_B:16/integer, UUID_C:16/integer, UUID_D:16/integer, UUID_E:48/integer>> = Value,
+    UUIDStr = io_lib:format("~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b", [UUID_A, UUID_B, UUID_C, UUID_D, UUID_E]),
+    list_to_binary(UUIDStr);
+    %% Value;
 decode_value_bin(?DATEOID, <<Date:32/signed-integer>>, _OIDMap, _DecodeOptions) -> calendar:gregorian_days_to_date(Date + ?POSTGRESQL_GD_EPOCH);
-decode_value_bin(?TIMEOID, TimeBin, _OIDMap, DecodeOptions) -> decode_time(TimeBin, proplists:get_bool(integer_datetimes, DecodeOptions), DecodeOptions);
+decode_value_bin(?TIMEOID, TimeBin, _OIDMap, DecodeOptions) -> decode_time(TimeBin, not proplists:get_bool(float_datetimes, DecodeOptions), DecodeOptions);
 decode_value_bin(?TIMETZOID, TimeTZBin, _OIDMap, DecodeOptions) -> decode_time_tz(TimeTZBin, proplists:get_bool(integer_datetimes, DecodeOptions), DecodeOptions);
-decode_value_bin(?TIMESTAMPOID, TimestampBin, _OIDMap, DecodeOptions) -> decode_timestamp(TimestampBin, proplists:get_bool(integer_datetimes, DecodeOptions), DecodeOptions);
-decode_value_bin(?TIMESTAMPTZOID, TimestampBin, _OIDMap, DecodeOptions) -> decode_timestamp(TimestampBin, proplists:get_bool(integer_datetimes, DecodeOptions), DecodeOptions);
+decode_value_bin(?TIMESTAMPOID, TimestampBin, _OIDMap, DecodeOptions) ->
+    decode_timestamp(TimestampBin, not proplists:get_bool(float_datetimes, DecodeOptions), DecodeOptions);
+decode_value_bin(?TIMESTAMPTZOID, TimestampBin, _OIDMap, DecodeOptions) -> decode_timestamp(TimestampBin, not proplists:get_bool(float_datetimes, DecodeOptions), DecodeOptions);
 decode_value_bin(?NUMERICOID, NumericBin, _OIDMap, _DecodeOptions) -> decode_numeric_bin(NumericBin);
 decode_value_bin(?POINTOID, <<X:64/float, Y:64/float>>, _OIDMap, _DecodeOptions) -> {point, {X, Y}};
 decode_value_bin(?LSEGOID, <<P1X:64/float, P1Y:64/float, P2X:64/float, P2Y:64/float>>, _OIDMap, _DecodeOptions) -> {lseg, {P1X, P1Y}, {P2X, P2Y}};
@@ -1093,7 +1177,7 @@ decode_timestamp(<<Timestamp:64/signed-integer>>, true, DecodeOptions) ->
     decode_timestamp0(TimestampSecs, USecs, DecodeOptions);
 decode_timestamp(<<Timestamp:64/float>>, false, DecodeOptions) ->
     TimestampSecs = trunc(Timestamp),
-    USecs = round((Timestamp - TimestampSecs) * 1000000),   % Maximum documented PostgreSQL precision is usec.
+    USecs = round((Timestamp - TimestampSecs) * 1000000), % Maximum documented PostgreSQL precision is usec.
     decode_timestamp0(TimestampSecs, USecs, DecodeOptions).
 
 decode_timestamp0(Secs, USecs, DecodeOptions) ->

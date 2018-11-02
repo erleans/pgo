@@ -24,9 +24,9 @@ end_per_suite(_Config) ->
 
 init_per_testcase(T, Config) when T =:= checkout_break ->
     Name = pool_break,
-    pgo:start_pool(Name, [{size, 1},
-                          {postgres, [{database, ?DATABASE},
-                                      {user, ?USER}]}]),
+    pgo_sup:start_child(Name, [{size, 1},
+                               {database, ?DATABASE},
+                               {user, ?USER}]),
 
     Tid = pgo_pool:tid(Name),
     ?UNTIL((catch ets:info(Tid, size)) =:= 1),
@@ -34,9 +34,9 @@ init_per_testcase(T, Config) when T =:= checkout_break ->
     [{pool_name, Name} | Config];
 init_per_testcase(T, Config) when T =:= checkout_query_crash ->
     Name = pool_query_crash,
-    pgo:start_pool(Name, [{size, 1},
-                          {postgres, [{database, ?DATABASE},
-                                      {user, ?USER}]}]),
+    pgo_sup:start_child(Name, [{size, 1},
+                               {database, ?DATABASE},
+                               {user, ?USER}]),
 
     Tid = pgo_pool:tid(Name),
     ?UNTIL((catch ets:info(Tid, size)) =:= 1),
@@ -44,19 +44,18 @@ init_per_testcase(T, Config) when T =:= checkout_query_crash ->
     [{pool_name, Name} | Config];
 init_per_testcase(checkout_kill, Config) ->
     Name = pool_kill,
-    pgo:start_pool(Name, [{size, 10},
-                          {postgres, [{database, ?DATABASE},
-                                      {user, ?USER}]}]),
-
+    pgo_sup:start_child(Name, [{size, 10},
+                               {database, ?DATABASE},
+                               {user, ?USER}]),
     Tid = pgo_pool:tid(Name),
     ?UNTIL((catch ets:info(Tid, size)) =:= 10),
 
     [{pool_name, Name} | Config];
 init_per_testcase(_, Config) ->
     Name = pool_1,
-    pgo:start_pool(Name, [{size, 10},
-                          {postgres, [{database, ?DATABASE},
-                                      {user, ?USER}]}]),
+    pgo_sup:start_child(Name, [{size, 10},
+                               {database, ?DATABASE},
+                               {user, ?USER}]),
     Tid = pgo_pool:tid(Name),
     ?UNTIL((catch ets:info(Tid, size)) =:= 10),
 

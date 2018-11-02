@@ -22,14 +22,11 @@
 -include("pgo_internal.hrl").
 
 -export_type([result/0,
-              pool_ref/0,
-              conn/0,
               error/0]).
--type conn() :: pgo_pool:conn().
--type pool_ref() :: pgo_pool:ref().
+
 -type result() :: #{command := atom(),
                     num_rows := integer(),
-                    rows := list()} | {error, error()}.
+                    rows := list()} | {error, error()} | {error, any()}.
 
 -type error() :: {pgo_error, #{error_field() => binary()}}.
 
@@ -54,63 +51,75 @@ query(Query) ->
     query(default, Query).
 
 %% @doc Executes a simple query either on a Pool or a provided connection.
--spec query(conn() | pool(), iodata()) -> result().
+-spec query(atom() | pg_pool:conn(), iodata()) -> result().
 query(Conn=#conn{}, Query) ->
     pgo_handler:simple_query(Conn, Query);
 query(Pool, Query) when is_atom(Pool) ->
     SpanCtx = oc_trace:start_span(<<"pgo:query/2">>, ocp:current_span_ctx(),
                                   #{attributes => #{<<"query">> => Query}}),
-    {ok, Ref, Conn} = checkout(Pool),
-    try
-        pgo_handler:simple_query(Conn, Query)
-    after
-        checkin(Ref, Conn),
-        oc_trace:finish_span(SpanCtx)
+    case checkout(Pool) of
+        {ok, Ref, Conn} ->
+            try
+                pgo_handler:simple_query(Conn, Query)
+            after
+                checkin(Ref, Conn),
+                oc_trace:finish_span(SpanCtx)
+            end;
+        {error, _}=E ->
+            E
     end;
 query(Query, Params) ->
     query(default, Query, Params).
 
 %% @doc Executes an extended query either on a Pool or a provided connection.
--spec query(conn() | pool(), iodata(), list()) -> result().
+-spec query(atom() | pg_pool:conn(), iodata(), list()) -> result().
 query(Conn=#conn{}, Query, Params) ->
     pgo_handler:extended_query(Conn, Query, Params);
 query(Pool, Query, Params) ->
     SpanCtx = oc_trace:start_span(<<"pgo:query/3">>, ocp:current_span_ctx(),
                                   #{attributes => #{<<"query">> => Query}}),
-    {ok, Ref, Conn} = checkout(Pool),
-    try
-        pgo_handler:extended_query(Conn, Query, Params)
-    after
-        checkin(Ref, Conn),
-        oc_trace:finish_span(SpanCtx)
+    case checkout(Pool) of
+        {ok, Ref, Conn} ->
+            try
+                pgo_handler:extended_query(Conn, Query, Params)
+            after
+                checkin(Ref, Conn),
+                oc_trace:finish_span(SpanCtx)
+            end;
+        {error, _}=E ->
+            E
     end.
 
 %% @equiv transaction(default, Fun)
--spec transaction(fun((conn()) -> any())) -> any().
+-spec transaction(fun((pgo_pool:conn()) -> any())) -> any() | {error, any()}.
 transaction(Fun) ->
     transaction(default, Fun).
 
 %% @doc Runs a function, passing it a connection, in a SQL transaction.
--spec transaction(pool(), fun((conn()) -> any())) -> any().
+-spec transaction(pool(), fun((pgo_pool:conn()) -> any())) -> any() | {error, any()}.
 transaction(Pool, Fun) ->
     case get(pgo_transaction_connection) of
         undefined ->
             SpanCtx = oc_trace:start_span(<<"pgo:transaction/2">>, ocp:current_span_ctx(), #{}),
-            {ok, Ref, Conn} = checkout(Pool),
-            try
-                #{command := 'begin'} = pgo_handler:simple_query(Conn, "BEGIN"),
-                put(pgo_transaction_connection, Conn),
-                Result = Fun(Conn),
-                #{command := 'commit'} = pgo_handler:simple_query(Conn, "COMMIT"),
-                Result
-            catch
-                ?WITH_STACKTRACE(T, R, S)
-                    pgo_handler:simple_query(Conn, "ROLLBACK"),
-                    erlang:raise(T, R, S)
-            after
-                checkin(Ref, Conn),
-                erase(pgo_transaction_connection),
-                oc_trace:finish_span(SpanCtx)
+            case checkout(Pool) of
+                {ok, Ref, Conn} ->
+                    try
+                        #{command := 'begin'} = pgo_handler:simple_query(Conn, "BEGIN"),
+                        put(pgo_transaction_connection, Conn),
+                        Result = Fun(Conn),
+                        #{command := commit} = pgo_handler:simple_query(Conn, "COMMIT"),
+                        Result
+                    catch
+                        ?WITH_STACKTRACE(T, R, S)
+                        pgo_handler:simple_query(Conn, "ROLLBACK"),
+                        erlang:raise(T, R, S)
+                    after
+                        checkin(Ref, Conn),
+                        erase(pgo_transaction_connection),
+                        oc_trace:finish_span(SpanCtx)
+                    end;
+                {error, _}=E ->
+                    E
             end;
         Conn ->
             %% already in a transaction
@@ -118,17 +127,16 @@ transaction(Pool, Fun) ->
     end.
 
 %% @doc Returns a connection from the pool.
--spec checkout(pool()) -> {ok, pool_ref(), conn()} | {error, any()}.
+-spec checkout(atom()) -> {ok, pgo_pool:pool_ref(), pgo_pool:conn()} | {error, any()}.
 checkout(Pool) ->
-    {ok, Ref, _, Conn} = pgo_pool:checkout(Pool, [{queue, false}]),
-    {ok, Ref, Conn}.
+    pgo_pool:checkout(Pool, [{queue, false}]).
 
 %% @doc Return a checked out connection to its pool
--spec checkin(pool_ref(), conn()) -> ok.
+-spec checkin(pgo_pool:pool_ref(), pgo_pool:conn()) -> ok.
 checkin(Ref, Conn) ->
     pgo_pool:checkin(Ref, Conn, []).
 
 %% @doc Disconnects the socket held by this reference.
--spec break(conn()) -> ok.
+-spec break(pgo_pool:conn()) -> ok.
 break(Conn) ->
     pgo_connection:break(Conn).

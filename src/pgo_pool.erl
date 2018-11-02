@@ -49,8 +49,8 @@ checkout(Pool, Opts) ->
     Now = erlang:monotonic_time(?TIME_UNIT),
     Timeout = abs_timeout(Now, Opts),
     case checkout(Pool, MaybeQueue, Now, Timeout) of
-        Ok={ok, _, _, _} ->
-            Ok;
+        {ok, Ref, _, Conn} ->
+           {ok, Ref, Conn};
         Error={error, _} ->
             Error;
         {exit, Reason} ->
@@ -312,8 +312,6 @@ checkout(Pool, Queue, Start, Timeout) ->
         checkout_call(Pid, Queue, Start, Timeout);
       Pid when node(Pid) =/= node() ->
         {exit, {badnode, node(Pid)}};
-      {_Name, Node} ->
-        {exit, {badnode, Node}};
       undefined ->
         {exit, noproc}
     end.

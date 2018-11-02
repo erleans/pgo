@@ -3,7 +3,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 %%%% CREATE ROLE test LOGIN;
-%%%% ALTER USER test WITH SUPERUSER
+%%%% ALTER USER test WITH SUPERUSER;
 %%%%
 %%%% CREATE DATABASE test WITH OWNER=test;
 %%%%
@@ -203,7 +203,7 @@ types_test_() ->
                           #{command := select, rows := [Row]} = R,
                           ?assertMatch({10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, _UUID, <<"deadbeef">>, _Float}, Row),
                           {10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, UUID, <<"deadbeef">>, Float} = Row,
-                          ?assertMatch(?UUID, UUID),
+                          ?assertMatch(<<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>, UUID),
                           ?assert(Float > 3.1413),
                           ?assert(Float < 3.1416)
                       end)
@@ -1032,35 +1032,6 @@ json_types_test_() ->
 %%         end)
 %%     ]
 %%     end}.
-
-custom_enum_test_() ->
-    {setup,
-     fun() ->
-             {ok, PoolPid} = start_pool(),
-             PoolPid
-     end,
-     fun(PoolPid) ->
-             #{command := drop} = pgo:query("DROP TYPE mood;"),
-             kill_sup(PoolPid)
-     end,
-     fun(_) ->
-             [
-              ?_test(begin
-                         %% #{command := commit} = pgo:query("BEGIN"),
-                         #{command := create} = pgo:query("CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy');"),
-                         %% ?assertMatch(#{command := select, rows := [{{MoodOID, <<"sad">>}}]}
-                         %%              when is_integer(MoodOID), pgo:query("select 'sad'::mood;")),
-                         %% ?assertMatch(#{command := select, rows := [{{MoodOID, <<"sad">>}}]}
-                         %%              when is_integer(MoodOID), pgo:query("select 'sad'::mood;", [])),
-                         %% #{command := commit} = pgo:query("COMMIT"),
-                         ?assertMatch(#{command := select, rows := [{{mood, <<"sad">>}}]}, pgo:query("select 'sad'::mood;", [])),
-                         ?assertMatch(#{command := select, rows := [{{mood, <<"sad">>}}]}, pgo:query("select 'sad'::mood;", [])),
-                         ?assertMatch(#{command := select, rows := [{{mood, <<"sad">>}}]}, pgo:query("select $1::mood;", [<<"sad">>])),
-                         ?assertMatch(#{command := select, rows := [{{array, [{mood, <<"sad">>}]}}]}, pgo:query("select '{sad}'::mood[];")),
-                         ?assertMatch(#{command := select, rows := [{{array, [{mood, <<"sad">>}]}}]}, pgo:query("select $1::mood[];", [{array, [<<"sad">>]}]))
-                     end)
-             ]
-     end}.
 
 %% custom_enum_native_test_() ->
 %%     {setup,

@@ -17,10 +17,6 @@
 
 -define(TIMEOUT_GEN_SERVER_CALL_DELTA, 5000).
 
--type prim_socket() :: port() | tuple().
--type socket_module() :: gen_tcp | ssl.
--type socket() :: {socket_module(), prim_socket()}.
-
 % driver options.
 -type open_option() ::
         {host, inet:ip_address() | inet:hostname()} % default: ?DEFAULT_HOST
@@ -124,7 +120,7 @@ close(#conn{socket=Socket}) ->
 %%--------------------------------------------------------------------
 %% @doc Actually open (or re-open) the connection.
 %%
--spec pgsql_open(atom(), [open_option()]) -> {ok, socket()} | {error, any()}.
+-spec pgsql_open(atom(), [open_option()]) -> {ok, pgo_pool:conn()} | {error, any()}.
 pgsql_open(Pool, Options) ->
     Host = proplists:get_value(host, Options, ?DEFAULT_HOST),
     Port = proplists:get_value(port, Options, ?DEFAULT_PORT),
@@ -490,7 +486,7 @@ decode_tag(<<"MOVE ", Num/binary>>) ->
 decode_tag(<<"COPY ", Num/binary>>) ->
     {copy, binary_to_integer(Num)};
 decode_tag(<<"BEGIN">>) ->
-    {commit, nil};
+    {'begin', nil};
 decode_tag(<<"COMMIT">>) ->
     {commit, nil};
 decode_tag(<<"ROLLBACK">>) ->
