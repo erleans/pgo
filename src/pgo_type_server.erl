@@ -53,9 +53,8 @@ terminate(_, _, #data{pool=Pool}) ->
 
 load(Pool, LastReload, RequestTime, DBOptions) when LastReload < RequestTime ->
     {ok, Conn} = pgo_handler:pgsql_open(Pool, DBOptions),
-    put(no_reload, true),
-    #{rows := Oids} = pgo_handler:extended_query(Conn, "SELECT oid, typname FROM pg_type", []),
-    erase(no_reload),
+    #{rows := Oids} = pgo_handler:extended_query(Conn, "SELECT oid, typname FROM pg_type", [],
+                                                 [no_reload_types]),
     pgo_handler:close(Conn),
     [ets:insert(Pool, {Oid, binary_to_atom(Typename, utf8)}) || {Oid, Typename} <- Oids];
 load(_, _, _, _) ->

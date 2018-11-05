@@ -829,7 +829,10 @@ type_to_oid(Type, Pool) ->
             undefined
     end.
 
-decode_value_bin(?JSONBOID, <<?JSONB_VERSION_1:8, Value/binary>>, _OIDMap, _IntegerDateTimes) -> Value;
+decode_value_bin(?JSONBOID, <<?JSONB_VERSION_1:8, Value/binary>>, _OIDMap, _IntegerDateTimes) ->
+    {jsonb, Value};
+decode_value_bin(?JSONOID, <<Value/binary>>, _OIDMap, _IntegerDateTimes) ->
+    {json, Value};
 decode_value_bin(?BOOLOID, <<0>>, _OIDMap, _DecodeOptions) -> false;
 decode_value_bin(?BOOLOID, <<1>>, _OIDMap, _DecodeOptions) -> true;
 decode_value_bin(?BYTEAOID, Value, _OIDMap, _DecodeOptions) -> Value;

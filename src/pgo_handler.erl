@@ -5,16 +5,13 @@
 
 -export([pgsql_open/2,
          extended_query/3,
+         extended_query/4,
          close/1]).
 
--define(REQUEST_TIMEOUT, infinity).
 -define(DEFAULT_HOST, "127.0.0.1").
 -define(DEFAULT_PORT, 5432).
 -define(DEFAULT_USER, "postgres").
 -define(DEFAULT_PASSWORD, "").
--define(DEFAULT_MAX_ROWS_STEP, 1000).
-
--define(TIMEOUT_GEN_SERVER_CALL_DELTA, 5000).
 
 % driver options.
 -type open_option() ::
@@ -56,7 +53,10 @@
     |   {result, any()}.
 
 extended_query(Socket, Query, Parameters) ->
-    pgsql_extended_query(Socket, Query, Parameters, fun(R, _) -> R end, []).
+    pgsql_extended_query(Socket, Query, Parameters, [], fun(R, _) -> R end, []).
+
+extended_query(Socket, Query, Parameters, QueryOptions) ->
+    pgsql_extended_query(Socket, Query, Parameters, QueryOptions, fun(R, _) -> R end, []).
 
 
 close(undefined) ->
@@ -220,10 +220,9 @@ pgsql_setup_finish(Socket, Options) ->
 %%     pgsql_error:is_in_failed_sql_transaction(Error).
 
 pgsql_extended_query(Conn=#conn{socket=Socket,
-                                pool=Pool}, Query, Parameters, PerRowFun, Acc0) ->
+                                pool=Pool}, Query, Parameters, QueryOptions, PerRowFun, Acc0) ->
     put(query, Query),
     IntegerDateTimes = true,
-    QueryOptions = [],
     ParseMessage = pgo_protocol:encode_parse_message("", Query, []),
     % We ask for a description of parameters only if required.
     PacketT = case catch(pgo_query_cache:lookup(Pool, Query)) of
@@ -297,7 +296,7 @@ pgsql_extended_query_receive_loop0(#parse_complete{}, {parse_complete_with_param
     pgsql_extended_query_receive_loop({parameter_description_with_params, Parameters}, Fun, Acc0, QueryOptions, Conn);
 pgsql_extended_query_receive_loop0(#parameter_description{data_types=ParameterDataTypes}, {parameter_description_with_params, Parameters}, Fun, Acc0, QueryOptions, Conn=#conn{socket=Socket, pool=Pool}) ->
     pgo_query_cache:insert(Pool, get(query), ParameterDataTypes),
-    oob_update_oid_map_if_required(Conn, ParameterDataTypes),
+    oob_update_oid_map_if_required(Conn, ParameterDataTypes, QueryOptions),
     PacketT = encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, true),
     case PacketT of
         {ok, SinglePacket} ->
@@ -324,7 +323,7 @@ pgsql_extended_query_receive_loop0(#bind_complete{}, bind_complete, Fun, Acc0, Q
 pgsql_extended_query_receive_loop0(#no_data{}, row_description, Fun, Acc0, QueryOptions, Conn) ->
     pgsql_extended_query_receive_loop(no_data, Fun, Acc0, QueryOptions, Conn);
 pgsql_extended_query_receive_loop0(#row_description{fields = Fields}, row_description, Fun, Acc0, QueryOptions, Conn) ->
-    oob_update_oid_map_from_fields_if_required(Conn, Fields),
+    oob_update_oid_map_from_fields_if_required(Conn, Fields, QueryOptions),
     pgsql_extended_query_receive_loop({rows, Fields}, Fun, Acc0, QueryOptions, Conn);
 pgsql_extended_query_receive_loop0(#data_row{values = Values}, {rows, Fields} = LoopState, Fun, Acc0, QueryOptions, Conn=#conn{pool=Pool}) ->
     DecodedRow = pgo_protocol:decode_row(Fields, Values, Pool, QueryOptions),
@@ -465,20 +464,22 @@ decode_object(Object) ->
 %%--------------------------------------------------------------------
 %% @doc Update the OID Map out of band, opening a new connection.
 %%
-oob_update_oid_map_from_fields_if_required(Conn, Fields) ->
-    case get(no_reload) of
-        true ->
-            ok;
-        _ ->
+oob_update_oid_map_from_fields_if_required(Conn, Fields, QueryOptions) ->
+    case proplists:get_bool(no_reload_types, QueryOptions) of
+        false ->
             OIDs = [OID || #row_description_field{data_type_oid = OID} <- Fields],
-            oob_update_oid_map_if_required(Conn, OIDs)
-end.
+            oob_update_oid_map_if_required(Conn, OIDs, QueryOptions);
+        true ->
+            ok
+    end.
 
-oob_update_oid_map_if_required(Conn=#conn{pool=Pool}, OIDs) ->
-    Required = lists:any(fun(OID) ->
-                                 not ets:member(Pool, OID)
-                         end, OIDs),
-    case Required of
-        true -> pgo_connection:reload_types(Conn);
-        false -> ok
+oob_update_oid_map_if_required(Conn=#conn{pool=Pool}, OIDs, QueryOptions) ->
+    case not proplists:get_bool(no_reload_types, QueryOptions)
+        andalso lists:any(fun(OID) ->
+                                  not ets:member(Pool, OID)
+                          end, OIDs) of
+        true ->
+            pgo_connection:reload_types(Conn);
+        false ->
+            ok
     end.
