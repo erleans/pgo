@@ -1,7 +1,7 @@
 # PGO
 
-[![CircleCI](https://circleci.com/gh/SpaceTime-IoT/pgo.svg?style=svg)](https://circleci.com/gh/SpaceTime-IoT/pgo)
-[![codecov](https://codecov.io/gh/SpaceTime-IoT/pgo/branch/master/graph/badge.svg)](https://codecov.io/gh/SpaceTime-IoT/pgo)
+[![CircleCI](https://circleci.com/gh/erleans/pgo.svg?style=svg)](https://circleci.com/gh/erleans/pgo)
+[![codecov](https://codecov.io/gh/erleans/pgo/branch/master/graph/badge.svg)](https://codecov.io/gh/erleans/pgo)
 [![Hex.pm](https://img.shields.io/hexpm/v//pgo.svg?maxAge=2592000)](https://hex.pm/packages/pgo)
 
 PG...Oh god not nother Postgres client in Erlang...
