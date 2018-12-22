@@ -33,8 +33,14 @@ callback_mode() ->
 
 ready(internal, load, Data=#data{pool=Pool,
                                  db_options=DBOptions}) ->
-    load(Pool, -1, 0, DBOptions),
-    {keep_state, Data#data{last_reload=erlang:monotonic_time()}};
+    case load(Pool, -1, 0, DBOptions) of
+        failed ->
+            %% not using a timer because this initial load, so want to block
+            timer:sleep(500),
+            {keep_state_and_data, [{next_event, internal, load}]};
+        _ ->
+            {keep_state, Data#data{last_reload=erlang:monotonic_time()}}
+    end;
 ready({call, From}, {reload, RequestTime}, Data=#data{pool=Pool,
                                                       db_options=DBOptions,
                                                       last_reload=LastReload}) ->
@@ -52,10 +58,26 @@ terminate(_, _, #data{pool=Pool}) ->
     ets:delete(Pool).
 
 load(Pool, LastReload, RequestTime, DBOptions) when LastReload < RequestTime ->
-    {ok, Conn} = pgo_handler:pgsql_open(Pool, DBOptions),
-    #{rows := Oids} = pgo_handler:extended_query(Conn, "SELECT oid, typname FROM pg_type", [],
-                                                 [no_reload_types]),
-    pgo_handler:close(Conn),
-    [ets:insert(Pool, {Oid, binary_to_atom(Typename, utf8)}) || {Oid, Typename} <- Oids];
+    try pgo_handler:pgsql_open(Pool, DBOptions) of
+        {ok, Conn} ->
+            load_and_update_types(Conn, Pool);
+        {error, _} ->
+            failed
+    catch
+        _:_ ->
+            failed
+    end;
 load(_, _, _, _) ->
     ok.
+
+load_and_update_types(Conn, Pool) ->
+    try
+        #{rows := Oids} = pgo_handler:extended_query(Conn, "SELECT oid, typname FROM pg_type", [],
+                                                     [no_reload_types]),
+        [ets:insert(Pool, {Oid, binary_to_atom(Typename, utf8)}) || {Oid, Typename} <- Oids]
+    catch
+        _:_ ->
+            failed
+    after
+        pgo_handler:close(Conn)
+    end.

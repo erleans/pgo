@@ -45,7 +45,6 @@
 -define(USECS_PER_MINUTE, 60000000).
 -define(USECS_PER_SEC, 1000000).
 
-
 %%====================================================================
 %% Public API
 %%====================================================================
@@ -686,7 +685,10 @@ decode_row_description_message0(Count, Binary, Acc) ->
             case decode_format_code(FormatCode) of
                 {ok, Format} ->
                     Field = #row_description_field{
-                        name = FieldName,
+                        name = case application:get_env(pgo, column_name_as_atom, false) of
+                                   true -> binary_to_atom(FieldName, utf8);
+                                   _ -> FieldName
+                               end,
                         table_oid = TableOid,
                         attr_number = AttrNum,
                         data_type_oid = DataTypeOid,
@@ -792,7 +794,18 @@ decode_string(Binary) ->
 %%
 -spec decode_row([#row_description_field{}], [binary()], atom(), proplists:proplist()) -> tuple().
 decode_row(Descs, Values, OIDMap, DecodeOptions) ->
-    decode_row0(Descs, Values, OIDMap, DecodeOptions, []).
+    case proplists:get_bool(return_rows_as_maps, DecodeOptions) of
+        false ->
+            decode_row0(Descs, Values, OIDMap, DecodeOptions, []);
+        true ->
+            decode_row_as_map(Descs, Values, OIDMap, DecodeOptions, #{})
+    end.
+
+decode_row_as_map([Desc=#row_description_field{name=Name} | DescsT], [Value | ValuesT], OIDMap, DecodeOptions, Acc) ->
+    DecodedValue = decode_value(Desc, Value, OIDMap, DecodeOptions),
+    decode_row_as_map(DescsT, ValuesT, OIDMap, DecodeOptions, Acc#{Name => DecodedValue});
+decode_row_as_map([], [], _OIDMap, _DecodeOptions, Acc) ->
+    Acc.
 
 decode_row0([Desc | DescsT], [Value | ValuesT], OIDMap, DecodeOptions, Acc) ->
     DecodedValue = decode_value(Desc, Value, OIDMap, DecodeOptions),
@@ -805,7 +818,6 @@ decode_value(#row_description_field{data_type_oid = DataTypeOID, format = binary
     decode_value_bin(DataTypeOID, Value, OIDMap, DecodeOptions);
 decode_value(#row_description_field{format = text}, _Value, _OIDMap, _DecodeOptions) ->
     throw(no_text_format_support).
-
 
 cast_datetime_secs(Secs, DecodeOptions) ->
     case proplists:get_value(datetime_float_seconds, DecodeOptions, as_available) of

@@ -1,0 +1,11 @@
+version: '3'
+
+services:
+  postgres:
+    image: postgres:9.6-alpine
+    environment:
+      - POSTGRES_USER=test
+      - POSTGRES_DB=test
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    ports:
+      - 5432:5432
