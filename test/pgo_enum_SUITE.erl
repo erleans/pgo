@@ -12,11 +12,8 @@ init_per_suite(Config) ->
 
     {ok, _} = pgo_sup:start_child(default, [{size, 1}, {database, "test"}, {user, "test"}]),
 
-    %% queue so we wait until a connection is started
-    {ok, Ref, Conn} = pgo_pool:checkout(default, [{queue, true}]),
     ?assertMatch(#{command := create},
-                 pgo:query(Conn, "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')")),
-    pgo_pool:checkin(Ref, Conn, []),
+                 pgo:query("CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')")),
 
     Config.
 

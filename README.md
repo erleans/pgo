@@ -11,7 +11,7 @@ PG...Oh god not nother Postgres client in Erlang...
 * No message passing. Clients checkout the socket and use it directly.
 * Binary protocol with input oids cached.
 * Simple and direct. Tries to limit runtime options as much as possible.
-* Instrumented with [OpenCensus](https://github.com/census-instrumentation/opencensus-erlang)
+* Instrumented with [Telemetry](https://github.com/beam-telemetry/telemetry) and [OpenCensus](https://github.com/census-instrumentation/opencensus-erlang)
 * Mix apps currently too hard to use in a Rebar3 project. 
 
 ## Requirements
@@ -35,19 +35,21 @@ To try `pgo` simply modify `config/example.config` by replacing the `host`, `dat
 ].
 ```
 
-`default` is the name of the pool, `size` is the number of connections to create for the pool.
+`default` is the name of the pool, `size` is the number of connections to create for the pool. Or you can start the pool through `pgo:start_pool/2`:
 
-Then start a shell with `rebar3`, it will boot the applications which will start the pool automatically:
+``` erlang
+> pgo:start_pool(default, [{size, 5}, {host, "127.0.0.1"}, {database, "test"}, {user, "test"}]). 
+```
+
+Then start a shell with `rebar3 shell`, it will boot the applications which will start the pool automatically if it is configured through `sys.config`.
 
 ```shell
-$ rebar3 shell 
-
-1> pgo:query("select 1").
+> pgo:query("select 1").
 #{command => select, num_rows => 1, rows => [{1}]}
-2> pgo:transaction(fun(Conn) ->
-2>     pgo:query(Conn, "INSERT INTO my_table(name) VALUES('Name 1')"),
-2>     pgo:query(Conn, "INSERT INTO my_table(name) VALUES('Name 2')")
-2> end).
+> pgo:transaction(fun() ->
+>     pgo:query("INSERT INTO my_table(name) VALUES('Name 1')"),
+>     pgo:query("INSERT INTO my_table(name) VALUES('Name 2')")
+> end).
 #{command => insert,num_rows => 1,rows => []}
 ```
 

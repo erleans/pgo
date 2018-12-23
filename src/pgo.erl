@@ -15,7 +15,10 @@
          query/3,
          transaction/1,
          transaction/2,
+         transaction/3,
+         with_conn/2,
          checkout/1,
+         checkout/2,
          checkin/2,
          break/1]).
 
@@ -40,68 +43,65 @@
                   | {database, string()}.
 -type pool_config() :: [pool_opt()].
 
+-type query_options() :: return_rows_as_maps | {return_rows_as_maps, boolean()}.
+-type pool_options() :: queue | {queue, boolean()}.
+-type options() :: #{pool => atom(),
+                     pool_opts => [pool_options()],
+                     query_opts => [query_options()]}.
+
 %% @doc Starts connection pool as a child of pgo_sup.
 -spec start_pool(pool(), pool_config()) -> {ok, pid()}.
 start_pool(Name, PoolConfig) ->
     pgo_sup:start_child(Name, PoolConfig).
 
-%% @equiv query(default, Query)
+%% @equiv query(Query, [], #{})
 -spec query(iodata()) -> result().
 query(Query) ->
-    query(default, Query).
+    query(Query, [], #{}).
 
-%% @doc Executes a simple query either on a Pool or a provided connection.
--spec query(atom() | pg_pool:conn(), iodata()) -> result().
-query(Conn=#conn{}, Query) ->
-    pgo_handler:extended_query(Conn, Query, [], [{return_rows_as_maps, false}]);
-query(Pool, Query) when is_atom(Pool) ->
-    SpanCtx = oc_trace:start_span(<<"pgo:query/2">>, ocp:current_span_ctx(),
-                                  #{attributes => #{<<"query">> => Query}}),
-    case checkout(Pool) of
-        {ok, Ref, Conn} ->
-            try
-                pgo_handler:extended_query(Conn, Query, [], [{return_rows_as_maps, false}])
-            after
-                checkin(Ref, Conn),
-                oc_trace:finish_span(SpanCtx)
-            end;
-        {error, _}=E ->
-            E
-    end;
+%% @equiv query(Query, Params, #{})
+-spec query(iodata(), list()) -> result().
 query(Query, Params) ->
-    query(default, Query, Params).
+    query(Query, Params, #{}).
 
 %% @doc Executes an extended query either on a Pool or a provided connection.
--spec query(atom() | pg_pool:conn(), iodata(), list()) -> result().
-query(Conn=#conn{}, Query, Params) ->
-    pgo_handler:extended_query(Conn, Query, Params, [{return_rows_as_maps, false}]);
-query(Pool, Query, Params) ->
-    SpanCtx = oc_trace:start_span(<<"pgo:query/3">>, ocp:current_span_ctx(),
-                                  #{attributes => #{<<"query">> => Query}}),
-    case checkout(Pool) of
-        {ok, Ref, Conn} ->
-            try
-                pgo_handler:extended_query(Conn, Query, Params, [{return_rows_as_maps, false}])
-            after
-                checkin(Ref, Conn),
-                oc_trace:finish_span(SpanCtx)
-            end;
-        {error, _}=E ->
-            E
-    end.
-
-%% @equiv transaction(default, Fun)
--spec transaction(fun((pgo_pool:conn()) -> any())) -> any() | {error, any()}.
-transaction(Fun) ->
-    transaction(default, Fun).
-
-%% @doc Runs a function, passing it a connection, in a SQL transaction.
--spec transaction(pool(), fun((pgo_pool:conn()) -> any())) -> any() | {error, any()}.
-transaction(Pool, Fun) ->
+-spec query(iodata(), list(), options()) -> result().
+query(Query, Params, Options) ->
+    Pool = maps:get(pool, Options, default),
+    QueryOptions = maps:get(query_opts, Options, []),
     case get(pgo_transaction_connection) of
         undefined ->
-            SpanCtx = oc_trace:start_span(<<"pgo:transaction/2">>, ocp:current_span_ctx(), #{}),
-            case checkout(Pool) of
+            PoolOptions = maps:get(pool_options, Options, []),
+            case checkout(Pool, PoolOptions) of
+                {ok, Ref, Conn} ->
+                    try
+                        pgo_handler:extended_query(Conn, Query, Params, QueryOptions)
+                    after
+                        checkin(Ref, Conn)
+                    end;
+                {error, _}=E ->
+                    E
+            end;
+        Conn ->
+            pgo_handler:extended_query(Conn, Query, Params, QueryOptions)
+    end.
+
+%% @equiv transaction(default, Fun, [])
+-spec transaction(fun(() -> any())) -> any() | {error, any()}.
+transaction(Fun) ->
+    transaction(default, Fun, []).
+
+%% @equiv transaction(default, Fun, Options)
+-spec transaction(fun(() -> any()), options()) -> any() | {error, any()}.
+transaction(Fun, Options) when is_function(Fun) ->
+    transaction(Fun, Options).
+
+%% @doc Runs a function, passing it a connection, in a SQL transaction.
+-spec transaction(pool(), fun(() -> any()), [pool_options()]) -> any() | {error, any()}.
+transaction(Pool, Fun, Options) ->
+    case get(pgo_transaction_connection) of
+        undefined ->
+            case checkout(Pool, Options) of
                 {ok, Ref, Conn} ->
                     try
                         #{command := 'begin'} = pgo_handler:extended_query(Conn, "BEGIN", []),
@@ -115,8 +115,7 @@ transaction(Pool, Fun) ->
                         erlang:raise(T, R, S)
                     after
                         checkin(Ref, Conn),
-                        erase(pgo_transaction_connection),
-                        oc_trace:finish_span(SpanCtx)
+                        erase(pgo_transaction_connection)
                     end;
                 {error, _}=E ->
                     E
@@ -126,10 +125,29 @@ transaction(Pool, Fun) ->
             Fun(Conn)
     end.
 
+with_conn(Conn, Fun) ->
+    case get(pgo_transaction_connection) of
+        undefined ->
+            put(pgo_transaction_connection, Conn),
+            try Fun()
+            after
+                erase(pgo_transaction_connection)
+            end;
+        OldConn ->
+            try Fun()
+            after
+                put(pgo_transaction_connection, OldConn)
+            end
+    end.
+
 %% @doc Returns a connection from the pool.
 -spec checkout(atom()) -> {ok, pgo_pool:pool_ref(), pgo_pool:conn()} | {error, any()}.
 checkout(Pool) ->
-    pgo_pool:checkout(Pool, [{queue, false}]).
+    pgo_pool:checkout(Pool, []).
+
+-spec checkout(atom(), options()) -> {ok, pgo_pool:pool_ref(), pgo_pool:conn()} | {error, any()}.
+checkout(Pool, Options) ->
+    pgo_pool:checkout(Pool, Options).
 
 %% @doc Return a checked out connection to its pool
 -spec checkin(pgo_pool:pool_ref(), pgo_pool:conn()) -> ok.

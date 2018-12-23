@@ -52,6 +52,7 @@
         % expect ready_for_query
     |   {result, any()}.
 
+%% TODO: Add oc tracing here
 extended_query(Socket, Query, Parameters) ->
     pgsql_extended_query(Socket, Query, Parameters, [], fun(R, _) -> R end, []).
 

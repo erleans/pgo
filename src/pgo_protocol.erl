@@ -681,7 +681,9 @@ decode_row_description_message(Payload) ->
 decode_row_description_message0(0, <<>>, Acc) -> {ok, lists:reverse(Acc)};
 decode_row_description_message0(Count, Binary, Acc) ->
     case decode_string(Binary) of
-        {ok, FieldName, <<TableOid:32/integer, AttrNum:16/integer, DataTypeOid:32/integer, DataTypeSize:16/integer, TypeModifier:32/integer, FormatCode:16/integer, Tail/binary>>} ->
+        {ok, FieldName, <<TableOid:32/integer, AttrNum:16/integer, DataTypeOid:32/integer,
+                          DataTypeSize:16/integer, TypeModifier:32/integer, FormatCode:16/integer,
+                          Tail/binary>>} ->
             case decode_format_code(FormatCode) of
                 {ok, Format} ->
                     Field = #row_description_field{

@@ -118,14 +118,16 @@ checkout_query_crash(Config) ->
     Tid = pgo_pool:tid(Name),
 
     {ok, _Ref, Conn} = pgo:checkout(Name),
-    try
-        pgo:query(Conn, "select $1::uuid", [<<1,2,3,4,5>>])
-    after
-        pgo:checkin(_Ref, Conn)
-    end,
+    pgo:with_conn(Conn, fun() ->
+                          pgo:query("select $1::uuid", [<<1,2,3,4,5>>])
+                        end),
+    pgo:checkin(_Ref, Conn),
 
     ?UNTIL((catch ets:info(Tid, size)) =:= 1),
     {ok, _Ref1, Conn1} = pgo:checkout(Name),
-    ?assertMatch(#{command := create}, pgo:query(Conn1, "create temporary table foo (_id integer)", [])),
+    pgo:with_conn(Conn1, fun() ->
+                           ?assertMatch(#{command := create},
+                                        pgo:query("create temporary table foo (_id integer)", []))
+                         end),
 
     ok.
