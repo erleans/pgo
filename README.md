@@ -44,6 +44,11 @@ $ rebar3 shell
 
 1> pgo:query("select 1").
 #{command => select, num_rows => 1, rows => [{1}]}
+2> pgo:transaction(fun(Conn) ->
+2>     pgo:query(Conn, "INSERT INTO my_table(name) VALUES('Name 1')"),
+2>     pgo:query(Conn, "INSERT INTO my_table(name) VALUES('Name 2')")
+2> end).
+#{command => insert,num_rows => 1,rows => []}
 ```
 
 ## Running Tests
