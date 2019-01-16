@@ -16,9 +16,7 @@ PG...Oh god not nother Postgres client in Erlang...
 
 ## Requirements
 
-Erlang/OTP 20 and above. Queries will not run on OTP 19 and below because some of the required functions are defined only in OTP 20+.
-
-This project also depends on merl which is built in by default as of OTP 18.
+Erlang/OTP 20 and above.
 
 ## Use
 
