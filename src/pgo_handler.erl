@@ -54,10 +54,16 @@
 
 %% TODO: Add oc tracing here
 extended_query(Socket, Query, Parameters) ->
-    pgsql_extended_query(Socket, Query, Parameters, [], fun(R, _) -> R end, []).
+    extended_query(Socket, Query, Parameters, []).
 
 extended_query(Socket, Query, Parameters, QueryOptions) ->
-    pgsql_extended_query(Socket, Query, Parameters, QueryOptions, fun(R, _) -> R end, []).
+    Start = erlang:monotonic_time(),
+    Result = pgsql_extended_query(Socket, Query, Parameters, QueryOptions, fun(R, _) -> R end, []),
+    Latency = erlang:monotonic_time() - Start,
+    telemetry:execute([pgo, query], Latency, #{query => Query,
+                                               query_time => Latency,
+                                               result => Result}),
+    Result.
 
 
 close(undefined) ->

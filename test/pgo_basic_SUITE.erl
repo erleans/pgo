@@ -10,7 +10,7 @@
 -define(TXT_UUID, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>).
 
 all() ->
-    [select, insert_update, text_types, json_jsonb, types].
+    [select, insert_update, text_types, json_jsonb, types, validate_telemetry].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
@@ -28,6 +28,21 @@ end_per_suite(_Config) ->
     application:stop(pgo),
     application:stop(opencensus),
     ok.
+
+validate_telemetry(_Config) ->
+    Self = self(),
+    telemetry:attach(<<"send-query-time">>, [pgo, query],
+                     fun(Event, Latency, Metadata, _) -> Self ! {Event, Latency, Metadata} end, []),
+
+    ?assertMatch(#{rows := [{null}]}, pgo:query("select null")),
+
+    receive
+        {[pgo, query], Latency, #{query_time := QueryTime}} ->
+            ?assertEqual(Latency, QueryTime)
+    after
+        500 ->
+            ct:fail(timeout)
+    end.
 
 select(_Config) ->
     ?assertMatch({error, _}, pgo:query("select $1", [])),
