@@ -67,23 +67,31 @@ query(Query, Params) ->
 %% @doc Executes an extended query either on a Pool or a provided connection.
 -spec query(iodata(), list(), options()) -> result().
 query(Query, Params, Options) ->
-    Pool = maps:get(pool, Options, default),
     QueryOptions = maps:get(query_opts, Options, []),
     case get(pgo_transaction_connection) of
         undefined ->
+            Pool = maps:get(pool, Options, default),
             PoolOptions = maps:get(pool_options, Options, []),
             case checkout(Pool, PoolOptions) of
                 {ok, Ref, Conn} ->
                     try
-                        pgo_handler:extended_query(Conn, Query, Params, QueryOptions)
+                        pgo_handler:extended_query(Conn, Query, Params,
+                                                   QueryOptions, #{queue_time => undefined})
                     after
                         checkin(Ref, Conn)
                     end;
                 {error, _}=E ->
                     E
             end;
-        Conn ->
-            pgo_handler:extended_query(Conn, Query, Params, QueryOptions)
+        Conn=#conn{pool=Pool} ->
+            %% verify we aren't trying to run a query against another pool from a transaction
+            case maps:get(pool, Options, Pool) of
+                P when P =:= Pool ->
+                    pgo_handler:extended_query(Conn, Query, Params, QueryOptions,
+                                               #{queue_time => undefined});
+                P ->
+                    error({in_other_pool_transaction, P})
+            end
     end.
 
 %% @equiv transaction(default, Fun, [])
@@ -104,14 +112,14 @@ transaction(Pool, Fun, Options) ->
             case checkout(Pool, Options) of
                 {ok, Ref, Conn} ->
                     try
-                        #{command := 'begin'} = pgo_handler:extended_query(Conn, "BEGIN", []),
+                        #{command := 'begin'} = pgo_handler:extended_query(Conn, "BEGIN", [], #{queue_time => undefined}),
                         put(pgo_transaction_connection, Conn),
-                        Result = Fun(Conn),
-                        #{command := commit} = pgo_handler:extended_query(Conn, "COMMIT", []),
+                        Result = Fun(),
+                        #{command := commit} = pgo_handler:extended_query(Conn, "COMMIT", [], #{queue_time => undefined}),
                         Result
                     catch
                         ?WITH_STACKTRACE(T, R, S)
-                        pgo_handler:extended_query(Conn, "ROLLBACK", []),
+                        pgo_handler:extended_query(Conn, "ROLLBACK", [], #{queue_time => undefined}),
                         erlang:raise(T, R, S)
                     after
                         checkin(Ref, Conn),
@@ -120,9 +128,9 @@ transaction(Pool, Fun, Options) ->
                 {error, _}=E ->
                     E
             end;
-        Conn ->
+        _Conn ->
             %% already in a transaction
-            Fun(Conn)
+            Fun()
     end.
 
 with_conn(Conn, Fun) ->

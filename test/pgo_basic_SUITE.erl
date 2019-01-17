@@ -37,7 +37,8 @@ validate_telemetry(_Config) ->
     ?assertMatch(#{rows := [{null}]}, pgo:query("select null")),
 
     receive
-        {[pgo, query], Latency, #{query_time := QueryTime}} ->
+        {[pgo, query], Latency, #{query_time := QueryTime,
+                                  pool := default}} ->
             ?assertEqual(Latency, QueryTime)
     after
         500 ->

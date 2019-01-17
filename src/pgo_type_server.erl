@@ -73,7 +73,7 @@ load(_, _, _, _) ->
 load_and_update_types(Conn, Pool) ->
     try
         #{rows := Oids} = pgo_handler:extended_query(Conn, "SELECT oid, typname FROM pg_type", [],
-                                                     [no_reload_types]),
+                                                     [no_reload_types], #{queue_time => undefined}),
         [ets:insert(Pool, {Oid, binary_to_atom(Typename, utf8)}) || {Oid, Typename} <- Oids]
     catch
         _:_ ->

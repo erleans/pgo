@@ -6,6 +6,7 @@
 -export([pgsql_open/2,
          extended_query/3,
          extended_query/4,
+         extended_query/5,
          close/1]).
 
 -define(DEFAULT_HOST, "127.0.0.1").
@@ -54,15 +55,19 @@
 
 %% TODO: Add oc tracing here
 extended_query(Socket, Query, Parameters) ->
-    extended_query(Socket, Query, Parameters, []).
+    extended_query(Socket, Query, Parameters, [], #{queue_time => undefined}).
 
-extended_query(Socket, Query, Parameters, QueryOptions) ->
+extended_query(Socket, Query, Parameters, Timings) when is_map(Timings) ->
+    extended_query(Socket, Query, Parameters, [], Timings).
+
+extended_query(Socket=#conn{pool=Pool}, Query, Parameters, QueryOptions, Timings) ->
     Start = erlang:monotonic_time(),
     Result = pgsql_extended_query(Socket, Query, Parameters, QueryOptions, fun(R, _) -> R end, []),
     Latency = erlang:monotonic_time() - Start,
-    telemetry:execute([pgo, query], Latency, #{query => Query,
-                                               query_time => Latency,
-                                               result => Result}),
+    telemetry:execute([pgo, query], Latency, Timings#{pool => Pool,
+                                                      query => Query,
+                                                      query_time => Latency,
+                                                      result => Result}),
     Result.
 
 
