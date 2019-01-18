@@ -41,13 +41,35 @@ To try `pgo` simply modify `config/example.config` by replacing the `host`, `dat
 
 Then start a shell with `rebar3 shell`, it will boot the applications which will start the pool automatically if it is configured through `sys.config`.
 
-```shell
+```erlang
 > pgo:query("select 1").
 #{command => select, num_rows => 1, rows => [{1}]}
 > pgo:transaction(fun() ->
 >     pgo:query("INSERT INTO my_table(name) VALUES('Name 1')"),
 >     pgo:query("INSERT INTO my_table(name) VALUES('Name 2')")
 > end).
+#{command => insert,num_rows => 1,rows => []}
+```
+
+## Telemetry and Tracing
+
+A [Telemetry](https://github.com/beam-telemetry/telemetry) event `[pgo, query]` can be attached to for receiving the time a query takes as well as other metadata for each query.
+
+[OpenCensus](https://opencensus.io/) spans can be enabled for queries and transactions by either setting the `trace_default` to `true` for the pool:
+
+``` erlang
+> pgo:start_pool(default, [{trace_default, true}, {size, 5}, {host, "127.0.0.1"}, {database, "test"}, {user, "test"}]). 
+```
+
+Or by passing `#{trace => true}` in the options for a query or transaction:
+
+```erlang
+> pgo:query("select 1", [], #{trace => true}).
+#{command => select, num_rows => 1, rows => [{1}]}
+> pgo:transaction(fun() ->
+>     pgo:query("INSERT INTO my_table(name) VALUES('Name 1')"),
+>     pgo:query("INSERT INTO my_table(name) VALUES('Name 2')")
+> end, #{trace => true}).
 #{command => insert,num_rows => 1,rows => []}
 ```
 
