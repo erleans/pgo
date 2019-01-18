@@ -58,7 +58,8 @@ A [Telemetry](https://github.com/beam-telemetry/telemetry) event `[pgo, query]` 
 [OpenCensus](https://opencensus.io/) spans can be enabled for queries and transactions by either setting the `trace_default` to `true` for the pool:
 
 ``` erlang
-> pgo:start_pool(default, [{trace_default, true}, {size, 5}, {host, "127.0.0.1"}, {database, "test"}, {user, "test"}]). 
+> pgo:start_pool(default, [{trace_default, true}, {size, 5}, {host, "127.0.0.1"}, 
+                           {database, "test"}, {user, "test"}]). 
 ```
 
 Or by passing `#{trace => true}` in the options for a query or transaction:
@@ -72,6 +73,8 @@ Or by passing `#{trace => true}` in the options for a query or transaction:
 > end, #{trace => true}).
 #{command => insert,num_rows => 1,rows => []}
 ```
+
+Note that since this is optional the `opencensus` application is not included as a dependency of `pgo`. So it must be included as a `rebar3` dependency and runtime dependency (listed in your application's `.app.src` `applications` or the list of applications for `relx` to include in a release).
 
 ## Running Tests
 
