@@ -46,6 +46,7 @@
 -type query_options() :: return_rows_as_maps | {return_rows_as_maps, boolean()}.
 -type pool_options() :: queue | {queue, boolean()}.
 -type options() :: #{pool => atom(),
+                     trace => boolean(),
                      pool_opts => [pool_options()],
                      query_opts => [query_options()]}.
 
@@ -73,11 +74,16 @@ query(Query, Params, Options) ->
             Pool = maps:get(pool, Options, default),
             PoolOptions = maps:get(pool_options, Options, []),
             case checkout(Pool, PoolOptions) of
-                {ok, Ref, Conn} ->
+                {ok, Ref, Conn=#conn{trace_default=TraceDefault}} ->
+                    DoTrace = maps:get(trace, Options, TraceDefault),
+                    {SpanCtx, ParentCtx} = maybe_start_span(DoTrace,
+                                                            <<"pgo:query/3">>,
+                                                            #{attributes => #{<<"query">> => Query}}),
                     try
                         pgo_handler:extended_query(Conn, Query, Params,
                                                    QueryOptions, #{queue_time => undefined})
                     after
+                        maybe_finish_span(DoTrace, SpanCtx, ParentCtx),
                         checkin(Ref, Conn)
                     end;
                 {error, _}=E ->
@@ -110,7 +116,11 @@ transaction(Pool, Fun, Options) ->
     case get(pgo_transaction_connection) of
         undefined ->
             case checkout(Pool, Options) of
-                {ok, Ref, Conn} ->
+                {ok, Ref, Conn=#conn{trace_default=TraceDefault}} ->
+                    DoTrace = maps:get(trace, Options, TraceDefault),
+                    {SpanCtx, ParentCtx} = maybe_start_span(DoTrace,
+                                                            <<"pgo:transaction/2">>,
+                                                            #{}),
                     try
                         #{command := 'begin'} = pgo_handler:extended_query(Conn, "BEGIN", [], #{queue_time => undefined}),
                         put(pgo_transaction_connection, Conn),
@@ -122,6 +132,7 @@ transaction(Pool, Fun, Options) ->
                         pgo_handler:extended_query(Conn, "ROLLBACK", [], #{queue_time => undefined}),
                         erlang:raise(T, R, S)
                     after
+                        maybe_finish_span(DoTrace, SpanCtx, ParentCtx),
                         checkin(Ref, Conn),
                         erase(pgo_transaction_connection)
                     end;
@@ -132,6 +143,21 @@ transaction(Pool, Fun, Options) ->
             %% already in a transaction
             Fun()
     end.
+
+
+maybe_start_span(false, _, _) ->
+    {undefined, undefined};
+maybe_start_span(true, Name, Attributes) ->
+    CurrentSpanCtx = ocp:current_span_ctx(),
+    NewSpanCtx = oc_trace:start_span(Name, ocp:current_span_ctx(), Attributes),
+    ocp:with_span_ctx(NewSpanCtx),
+    {NewSpanCtx, CurrentSpanCtx}.
+
+maybe_finish_span(false, _, _) ->
+    undefined;
+maybe_finish_span(true, SpanCtx, ParentCtx) ->
+    oc_trace:finish_span(SpanCtx),
+    ocp:with_span_ctx(ParentCtx).
 
 with_conn(Conn, Fun) ->
     case get(pgo_transaction_connection) of

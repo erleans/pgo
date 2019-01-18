@@ -84,14 +84,15 @@ close(#conn{socket=Socket}) ->
 pgsql_open(Pool, Options) ->
     Host = proplists:get_value(host, Options, ?DEFAULT_HOST),
     Port = proplists:get_value(port, Options, ?DEFAULT_PORT),
-    % First open a TCP connection
+    TraceDefault = proplists:get_value(trace_default, Options, false),
     case gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, false}]) of
         {ok, Socket} ->
             case pgsql_setup(Socket, Options) of
                 ok ->
                     {ok, #conn{owner=self(),
                                pool=Pool,
-                               socket=Socket}};
+                               socket=Socket,
+                               trace_default=TraceDefault}};
                 {error, _} = SetupError ->
                     SetupError
             end;
