@@ -140,16 +140,19 @@ pgsql_setup_startup(Socket, Options) ->
     User = proplists:get_value(user, Options, ?DEFAULT_USER),
     Database = proplists:get_value(database, Options, User),
     ApplicationName = case proplists:get_value(application_name, Options, node()) of
-        ApplicationNameAtom when is_atom(ApplicationNameAtom) -> atom_to_binary(ApplicationNameAtom, utf8);
-        ApplicationNameString -> ApplicationNameString
-    end,
+                          ApplicationNameAtom when is_atom(ApplicationNameAtom) ->
+                              atom_to_binary(ApplicationNameAtom, utf8);
+                          ApplicationNameString ->
+                              ApplicationNameString
+                      end,
     TZOpt = case proplists:get_value(timezone, Options, undefined) of
-        undefined -> [];
-        Timezone -> [{<<"timezone">>, Timezone}]
-    end,
-    StartupMessage = pgo_protocol:encode_startup_message([{<<"user">>, User},
-                                                          {<<"database">>, Database},
-                                                          {<<"application_name">>, ApplicationName} | TZOpt]),
+                undefined -> [];
+                Timezone -> [{<<"timezone">>, Timezone}]
+            end,
+    StartupMessage =
+        pgo_protocol:encode_startup_message([{<<"user">>, User},
+                                             {<<"database">>, Database},
+                                             {<<"application_name">>, ApplicationName} | TZOpt]),
     case gen_tcp:send(Socket, StartupMessage) of
         ok ->
             case receive_message(Socket) of

@@ -10,7 +10,8 @@
 -define(TXT_UUID, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>).
 
 all() ->
-    [select, insert_update, text_types, json_jsonb, types, validate_telemetry].
+    [select, insert_update, text_types, rows_as_maps,
+     json_jsonb, types, validate_telemetry].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
@@ -55,7 +56,7 @@ select(_Config) ->
 
 insert_update(_Config) ->
     ?assertMatch(#{command := create},
-                             pgo:query("create table foo (id integer primary key, some_text text)")),
+                             pgo:query("create temporary table foo (id integer primary key, some_text text)")),
     ?assertMatch(#{command := insert},
                   pgo:query("insert into foo (id, some_text) values (1, 'hello')")),
     ?assertMatch(#{command := update},
@@ -81,6 +82,15 @@ text_types(_Config) ->
     ?assertMatch(#{command := select,rows := [{<<"foo">>}]}, pgo:query("select $1::varchar(12)", [<<"foo">>])),
     ?assertMatch(#{command := select,rows := [{<<"foo">>}]}, pgo:query("select 'foobar'::char(3)")),
     ?assertMatch(#{command := select,rows := [{<<"foo">>}]}, pgo:query("select $1::char(3)", [<<"foobar">>])).
+
+rows_as_maps(_Config) ->
+    ?assertMatch(#{command := create},
+                 pgo:query("create temporary table foo_1 (id integer primary key, some_text text)")),
+    ?assertMatch(#{command := insert},
+                 pgo:query("insert into foo_1 (id, some_text) values (1, 'hello')")),
+
+    ?assertMatch(#{command := select,rows := [#{<<"id">> := 1,<<"some_text">> := <<"hello">>}]},
+                 pgo:query("select * from foo_1", [], #{query_opts => [return_rows_as_maps]})).
 
 json_jsonb(_Config) ->
     #{command := create} = pgo:query("create table tmp (id integer primary key, a_json json, b_json json)"),
