@@ -26,8 +26,8 @@
 %%====================================================================
 %% Constants
 %%====================================================================
--define(PROTOCOL_VERSION_MAJOR, 3).
--define(PROTOCOL_VERSION_MINOR, 0).
+-define(PROTOCOL_VERSION_MAJOR, <<3:16/integer>>).
+-define(PROTOCOL_VERSION_MINOR, <<0:16/integer>>).
 
 -define(POSTGRESQL_GD_EPOCH, 730485). % ?_value(calendar:date_to_gregorian_days({2000,1,1}))).
 -define(POSTGRESQL_GS_EPOCH, 63113904000). % ?_value(calendar:datetime_to_gregorian_seconds({{2000,1,1}, {0,0,0}}))).
@@ -54,10 +54,10 @@
 %%
 -spec encode_startup_message([{iodata(), iodata()}]) -> binary().
 encode_startup_message(Parameters) ->
-    EncodedParams = [[iolist_to_binary(Key), 0, iolist_to_binary(Value), 0] || {Key, Value} <- Parameters],
-    Packet = list_to_binary([<<?PROTOCOL_VERSION_MAJOR:16/integer, ?PROTOCOL_VERSION_MINOR:16/integer>>, EncodedParams, 0]),
-    Size = byte_size(Packet) + 4,
-    <<Size:32/integer, Packet/binary>>.
+    EncodedParams = [[Key, 0, Value, 0] || {Key, Value} <- Parameters],
+    Packet = [?PROTOCOL_VERSION_MAJOR, ?PROTOCOL_VERSION_MINOR, EncodedParams, 0],
+    Size = iolist_size(Packet) + 4,
+    [<<Size:32/integer>>, Packet].
 
 %%--------------------------------------------------------------------
 %% @doc Encode the ssl request message.
@@ -85,9 +85,8 @@ encode_query_message(Query) ->
 %%
 -spec encode_copy_data_message(iodata()) -> binary().
 encode_copy_data_message(Message) ->
-    StringBin = iolist_to_binary(Message),
-    MessageLen = byte_size(StringBin) + 4,
-    <<$d, MessageLen:32/integer, StringBin/binary>>.
+    MessageLen = iolist_size(Message) + 4,
+    [<<$d, MessageLen:32/integer>>, Message].
 
 %%--------------------------------------------------------------------
 %% @doc Encode the end of a COPY operation
@@ -109,14 +108,12 @@ encode_copy_fail(ErrorMessage) ->
 %%
 -spec encode_parse_message(iodata(), iodata(), [pgsql_oid()]) -> binary().
 encode_parse_message(PreparedStatementName, Query, DataTypes) ->
-    PreparedStatementNameBin = iolist_to_binary(PreparedStatementName),
-    QueryBin = iolist_to_binary(Query),
-    DataTypesBin = list_to_binary([<<DataTypeOid:32/integer>> || DataTypeOid <- DataTypes]),
+    DataTypesBin = [<<DataTypeOid:32/integer>> || DataTypeOid <- DataTypes],
     DataTypesCount = length(DataTypes),
-    Packet = <<PreparedStatementNameBin/binary, 0, QueryBin/binary, 0,
-               DataTypesCount:16/integer, DataTypesBin/binary>>,
-    PacketLen = byte_size(Packet) + 4,
-    <<$P, PacketLen:32/integer, Packet/binary>>.
+    Packet = [PreparedStatementName, <<0>>, Query, <<0>>,
+              <<DataTypesCount:16/integer>>, DataTypesBin],
+    PacketLen = iolist_size(Packet) + 4,
+    [<<$P, PacketLen:32/integer>>, Packet].
 
 %%--------------------------------------------------------------------
 %% @doc Encode a bind message.
@@ -385,9 +382,9 @@ encode_array_binary(ArrayElements, ElementTypeOID) ->
     {HasNulls, Rows} = encode_array_binary_row(ArrayElements, false, []),
     Dims = get_array_dims(ArrayElements),
     Header = encode_array_binary_header(Dims, HasNulls, ElementTypeOID),
-    Encoded = list_to_binary([Header, Rows]),
-    Size = byte_size(Encoded),
-    <<Size:32/integer, Encoded/binary>>.
+    Encoded = [Header, Rows],
+    Size = iolist_size(Encoded),
+    [<<Size:32/integer>>, Encoded].
 
 encode_array_binary_row([null | Tail], _HasNull, Acc) ->
     encode_array_binary_row(Tail, true, [<<-1:32/integer>> | Acc]);
@@ -442,22 +439,20 @@ bind_requires_statement_description([_OtherParam | Tail]) ->
 %%
 -spec encode_describe_message(portal | statement, iodata()) -> binary().
 encode_describe_message(PortalOrStatement, Name) ->
-    NameBin = iolist_to_binary(Name),
-    MessageLen = byte_size(NameBin) + 6,
+    MessageLen = iolist_size(Name) + 6,
     WhatByte = case PortalOrStatement of
         portal -> $P;
         statement -> $S
     end,
-    <<$D, MessageLen:32/integer, WhatByte, NameBin/binary, 0>>.
+    [<<$D, MessageLen:32/integer, WhatByte>>, Name, <<0>>].
 
 %%--------------------------------------------------------------------
 %% @doc Encode an execute message.
 %%
 -spec encode_execute_message(iodata(), non_neg_integer()) -> binary().
 encode_execute_message(PortalName, MaxRows) ->
-    PortalNameBin = iolist_to_binary(PortalName),
-    MessageLen = byte_size(PortalNameBin) + 9,
-    <<$E, MessageLen:32/integer, PortalNameBin/binary, 0, MaxRows:32/integer>>.
+    MessageLen = iolist_size(PortalName) + 9,
+    [<<$E, MessageLen:32/integer>>, PortalName, <<0, MaxRows:32/integer>>].
 
 %%--------------------------------------------------------------------
 %% @doc Encode a sync message.
