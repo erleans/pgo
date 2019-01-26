@@ -74,14 +74,16 @@ query(Query, Params, Options) ->
             Pool = maps:get(pool, Options, default),
             PoolOptions = maps:get(pool_options, Options, []),
             case checkout(Pool, PoolOptions) of
-                {ok, Ref, Conn=#conn{trace_default=TraceDefault}} ->
+                {ok, Ref, Conn=#conn{trace_default=TraceDefault,
+                                     default_query_opts=DefaultQueryOpts}} ->
                     DoTrace = maps:get(trace, Options, TraceDefault),
                     {SpanCtx, ParentCtx} = maybe_start_span(DoTrace,
                                                             <<"pgo:query/3">>,
                                                             #{attributes => #{<<"query">> => Query}}),
                     try
                         pgo_handler:extended_query(Conn, Query, Params,
-                                                   QueryOptions, #{queue_time => undefined})
+                                                   QueryOptions ++ DefaultQueryOpts,
+                                                   #{queue_time => undefined})
                     after
                         maybe_finish_span(DoTrace, SpanCtx, ParentCtx),
                         checkin(Ref, Conn)
@@ -89,11 +91,13 @@ query(Query, Params, Options) ->
                 {error, _}=E ->
                     E
             end;
-        Conn=#conn{pool=Pool} ->
+        Conn=#conn{pool=Pool,
+                   default_query_opts=DefaultQueryOpts} ->
             %% verify we aren't trying to run a query against another pool from a transaction
             case maps:get(pool, Options, Pool) of
                 P when P =:= Pool ->
-                    pgo_handler:extended_query(Conn, Query, Params, QueryOptions,
+                    pgo_handler:extended_query(Conn, Query, Params,
+                                               QueryOptions ++ DefaultQueryOpts,
                                                #{queue_time => undefined});
                 P ->
                     error({in_other_pool_transaction, P})

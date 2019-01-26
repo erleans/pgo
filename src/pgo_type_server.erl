@@ -58,7 +58,7 @@ terminate(_, _, #data{pool=Pool}) ->
     ets:delete(Pool).
 
 load(Pool, LastReload, RequestTime, DBOptions) when LastReload < RequestTime ->
-    try pgo_handler:pgsql_open(Pool, DBOptions) of
+    try pgo_handler:pgsql_open(Pool, DBOptions, []) of
         {ok, Conn} ->
             load_and_update_types(Conn, Pool);
         {error, _} ->

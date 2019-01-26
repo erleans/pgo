@@ -3,7 +3,7 @@
 
 -include("pgo_internal.hrl").
 
--export([pgsql_open/2,
+-export([pgsql_open/3,
          extended_query/3,
          extended_query/4,
          extended_query/5,
@@ -84,19 +84,21 @@ close(#conn{socket=Socket}) ->
 %%--------------------------------------------------------------------
 %% @doc Actually open (or re-open) the connection.
 %%
--spec pgsql_open(atom(), [open_option()]) -> {ok, pgo_pool:conn()} | {error, any()}.
-pgsql_open(Pool, Options) ->
-    Host = proplists:get_value(host, Options, ?DEFAULT_HOST),
-    Port = proplists:get_value(port, Options, ?DEFAULT_PORT),
+-spec pgsql_open(atom(), [open_option()], list()) -> {ok, pgo_pool:conn()} | {error, any()}.
+pgsql_open(Pool, DBOptions, Options) ->
+    Host = proplists:get_value(host, DBOptions, ?DEFAULT_HOST),
+    Port = proplists:get_value(port, DBOptions, ?DEFAULT_PORT),
     TraceDefault = proplists:get_value(trace_default, Options, false),
+    DefaultQueryOpts = proplists:get_value(default_query_opts, Options, []),
     case gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, false}]) of
         {ok, Socket} ->
-            case pgsql_setup(Socket, Options) of
+            case pgsql_setup(Socket, DBOptions) of
                 ok ->
                     {ok, #conn{owner=self(),
                                pool=Pool,
                                socket=Socket,
-                               trace_default=TraceDefault}};
+                               trace_default=TraceDefault,
+                               default_query_opts=DefaultQueryOpts}};
                 {error, _} = SetupError ->
                     SetupError
             end;

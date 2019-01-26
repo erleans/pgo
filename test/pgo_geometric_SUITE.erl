@@ -16,7 +16,6 @@ init_per_suite(Config) ->
 
 end_per_suite(_Config) ->
     application:stop(pgo),
-    application:stop(opencensus),
     ok.
 
 select(_Config) ->

@@ -5,6 +5,8 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
+-include("pgo_internal.hrl").
+
 -define(DATABASE, "test").
 -define(USER, "test").
 
@@ -19,7 +21,6 @@ init_per_suite(Config) ->
 
 end_per_suite(_Config) ->
     application:stop(pgo),
-    application:stop(opencensus),
     ok.
 
 init_per_testcase(T, Config) when T =:= checkout_break ->
@@ -68,8 +69,8 @@ checkout_checkin(Config) ->
     Name = ?config(pool_name, Config),
     Tid = pgo_pool:tid(Name),
 
-    {ok, Ref, Conn={conn, _Pid, _Socket, _Pool, _}} = pgo:checkout(Name),
-    {ok, Ref1, Conn1={conn, _Pid1, _Socket1, _Pool, _}} = pgo:checkout(Name),
+    {ok, Ref, Conn=#conn{}} = pgo:checkout(Name),
+    {ok, Ref1, Conn1=#conn{}} = pgo:checkout(Name),
 
     ?UNTIL((catch ets:info(Tid, size)) =:= 8),
 
@@ -84,14 +85,14 @@ checkout_break(Config) ->
     Name = ?config(pool_name, Config),
     Tid = pgo_pool:tid(Name),
 
-    {ok, Ref, Conn={conn, Pid, Socket, _Pool, _}} = pgo:checkout(Name),
+    {ok, Ref, Conn=#conn{owner=Pid, socket=Socket}} = pgo:checkout(Name),
     pgo_connection:break(Conn, Ref),
 
     ?UNTIL((catch ets:info(Tid, size)) =:= 1),
 
     %% verify that the connection we broke is not still in the pool
     %% but the Pid for the pgo_connection proc should be the same
-    {ok, _Ref1, {conn, Pid1, Socket1, _Pool, _}} = pgo:checkout(Name),
+    {ok, _Ref1, #conn{owner=Pid1, socket=Socket1}} = pgo:checkout(Name),
     ?assertNotEqual(Socket, Socket1),
     ?assertEqual(Pid, Pid1),
 
@@ -101,8 +102,8 @@ checkout_kill(Config) ->
     Name = ?config(pool_name, Config),
     Tid = pgo_pool:tid(Name),
 
-    {ok, _Ref, {conn, _Pid, Socket, _Pool, _}} = pgo:checkout(Name),
-    {ok, _Ref1, {conn, Pid1, _Socket1, _Pool, _}} = pgo:checkout(Name),
+    {ok, _Ref, #conn{socket=Socket}} = pgo:checkout(Name),
+    {ok, _Ref1, #conn{owner=Pid1}} = pgo:checkout(Name),
 
     erlang:exit(Socket, kill),
     ?UNTIL((catch ets:info(Tid, size)) =:= 9),

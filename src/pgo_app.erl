@@ -16,7 +16,8 @@ start(_StartType, _StartArgs) ->
     pgo_query_cache:start_link(),
     Pools = application:get_env(pgo, pools, []),
     {ok, Pid} = pgo_sup:start_link(),
-    [{ok, _} = pgo_sup:start_child(Name, PoolConfig) || {Name, PoolConfig} <- Pools],
+    [{ok, _} = pgo_sup:start_child(Name, PoolConfig, []) || {Name, PoolConfig} <- Pools],
+    [{ok, _} = pgo_sup:start_child(Name, PoolConfig, Options) || {Name, PoolConfig, Options} <- Pools],
     {ok, Pid}.
 
 

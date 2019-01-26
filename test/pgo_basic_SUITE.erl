@@ -27,7 +27,6 @@ end_per_suite(_Config) ->
     pgo:query("drop table types"),
 
     application:stop(pgo),
-    application:stop(opencensus),
     ok.
 
 validate_telemetry(_Config) ->

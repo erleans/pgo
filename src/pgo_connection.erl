@@ -25,15 +25,16 @@
                ref :: reference() | undefined,
                queue :: reference(),
                conn :: #conn{} | undefined,
-               db_options :: list(),
+               db_settings :: list(),
+               options :: list(),
                holder :: ets:tid() | undefined,
                broker :: atom(),
                pool :: pid(),
                sup :: pid(),
                backoff :: backoff:backoff()}).
 
-start_link(Queue, PoolPid, PoolName, Sup, Args, Opts) ->
-    gen_statem:start_link(?MODULE, {Queue, PoolPid, PoolName, Sup, Args}, Opts).
+start_link(Queue, PoolPid, PoolName, Sup, DBSettings, Options) ->
+    gen_statem:start_link(?MODULE, {Queue, PoolPid, PoolName, Sup, DBSettings, Options}, []).
 
 pool_name({_Pid, Holder}) ->
     [PoolName] = ets:lookup(Holder, pool_name),
@@ -64,7 +65,7 @@ break(#conn{owner=Pid}, {_Pool, _Ref, _Deadline, Holder}) ->
 break(#conn{owner=Pid}) ->
     gen_statem:cast(Pid, break).
 
-init({Queue, Pool, PoolName, Sup, Settings}) ->
+init({Queue, Pool, PoolName, Sup, Settings, Options}) ->
     erlang:process_flag(trap_exit, true),
     B = backoff:init(1000, 10000),
     {ok, disconnected, #data{backoff=B,
@@ -72,7 +73,8 @@ init({Queue, Pool, PoolName, Sup, Settings}) ->
                              broker=PoolName,
                              queue=Queue,
                              sup=Sup,
-                             db_options=Settings},
+                             db_settings=Settings,
+                             options=Options},
      {next_event, internal, connect}}.
 
 callback_mode() ->
@@ -82,10 +84,11 @@ disconnected(EventType, _, Data=#data{broker=Broker,
                                       backoff=B,
                                       queue=Queue,
                                       pool=Pool,
-                                      db_options=DBOptions}) when EventType =:= internal
+                                      options=Options,
+                                      db_settings=DBOptions}) when EventType =:= internal
                                                                   ; EventType =:= timeout
                                                                   ; EventType =:= state_timeout ->
-    try pgo_handler:pgsql_open(Broker, DBOptions) of
+    try pgo_handler:pgsql_open(Broker, DBOptions, Options) of
         {ok, Conn} ->
             Holder = pgo_pool:update(Pool, Queue, ?MODULE, Conn),
             {_, B1} = backoff:succeed(B),
@@ -96,14 +99,14 @@ disconnected(EventType, _, Data=#data{broker=Broker,
             {Backoff, B1} = backoff:fail(B),
             {next_state, disconnected, Data#data{broker=Broker,
                                                  backoff=B1,
-                                                 db_options=DBOptions},
+                                                 db_settings=DBOptions},
              [{state_timeout, Backoff, connect}]}
     catch
         throw:_Reason ->
             {Backoff, B1} = backoff:fail(B),
             {next_state, disconnected, Data#data{broker=Broker,
                                                  backoff=B1,
-                                                 db_options=DBOptions},
+                                                 db_settings=DBOptions},
              [{state_timeout, Backoff, connect}]}
     end;
 disconnected(EventType, EventContent, Data) ->

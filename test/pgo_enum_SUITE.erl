@@ -21,7 +21,6 @@ end_per_suite(_Config) ->
     #{command := drop} = pgo:query("DROP TYPE mood CASCADE;"),
 
     application:stop(pgo),
-    application:stop(opencensus),
     ok.
 
 select(_Config) ->
