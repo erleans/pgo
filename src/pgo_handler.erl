@@ -14,6 +14,10 @@
 -define(DEFAULT_USER, "postgres").
 -define(DEFAULT_PASSWORD, "").
 
+-type row() :: list() | map().
+-type fields() :: [#row_description_field{}].
+-type decode_fun() :: fun((row(), fields()) -> row()) | undefined.
+
 % driver options.
 -type open_option() ::
         {host, inet:ip_address() | inet:hostname()} % default: ?DEFAULT_HOST
@@ -53,7 +57,6 @@
         % expect ready_for_query
     |   {result, any()}.
 
-%% TODO: Add oc tracing here
 extended_query(Socket, Query, Parameters) ->
     extended_query(Socket, Query, Parameters, [], #{queue_time => undefined}).
 
@@ -62,7 +65,8 @@ extended_query(Socket, Query, Parameters, Timings) when is_map(Timings) ->
 
 extended_query(Socket=#conn{pool=Pool}, Query, Parameters, QueryOptions, Timings) ->
     Start = erlang:monotonic_time(),
-    Result = pgsql_extended_query(Socket, Query, Parameters, QueryOptions, fun(R, _) -> R end, []),
+    DecodeFun = proplists:get_value(decode_fun, QueryOptions, undefined),
+    Result = pgsql_extended_query(Socket, Query, Parameters, QueryOptions, DecodeFun, []),
     Latency = erlang:monotonic_time() - Start,
     telemetry:execute([pgo, query], Latency, Timings#{pool => Pool,
                                                       query => Query,
@@ -257,7 +261,7 @@ pgsql_extended_query(Conn=#conn{socket=Socket,
         {ok, SinglePacket, LoopState} ->
             case gen_tcp:send(Socket, SinglePacket) of
                 ok ->
-                    pgsql_extended_query_receive_loop(LoopState,
+                    receive_loop(LoopState,
                                                       PerRowFun,
                                                       Acc0,
                                                       QueryOptions,
@@ -269,13 +273,15 @@ pgsql_extended_query(Conn=#conn{socket=Socket,
             PacketT
     end.
 
--spec encode_bind_describe_execute([any()], [pgsql_oid()], atom(), boolean()) -> {ok, iodata()} | {error, any()}.
+-spec encode_bind_describe_execute([any()], [pgsql_oid()], atom(), boolean())
+                                  -> {ok, iodata()} | {error, any()}.
 encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, IntegerDateTimes) ->
     DescribeMessage = pgo_protocol:encode_describe_message(portal, ""),
     ExecuteMessage = pgo_protocol:encode_execute_message("", 0),
     SyncOrFlushMessage = pgo_protocol:encode_sync_message(),
     try
-        BindMessage = pgo_protocol:encode_bind_message("", "", Parameters, ParameterDataTypes, Pool, IntegerDateTimes),
+        BindMessage = pgo_protocol:encode_bind_message("", "", Parameters, ParameterDataTypes,
+                                                       Pool, IntegerDateTimes),
         SinglePacket = [BindMessage, DescribeMessage, ExecuteMessage, SyncOrFlushMessage],
         {ok, SinglePacket}
     catch throw:Exception ->
@@ -287,27 +293,29 @@ encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, IntegerDateTi
 %% requires_statement_description(_Parameters) ->
 %%     true. %pgo_protocol:bind_requires_statement_description(Parameters).
 
--spec pgsql_extended_query_receive_loop(extended_query_loop_state(), fun(), list(), list(), pgo:conn())
+-spec receive_loop(extended_query_loop_state(), decode_fun(), list(), list(), pgo:conn())
                                        -> pgo:result().
-pgsql_extended_query_receive_loop(LoopState, Fun, Acc0, QueryOptions, Conn=#conn{socket=Socket}) ->
+receive_loop(LoopState, DecodeFun, Acc0, QueryOptions, Conn=#conn{socket=Socket}) ->
     case receive_message(Socket) of
         {ok, Message} ->
-            pgsql_extended_query_receive_loop0(Message, LoopState, Fun, Acc0, QueryOptions, Conn);
+            receive_loop0(Message, LoopState, DecodeFun, Acc0, QueryOptions, Conn);
         {error, _} = ReceiveError ->
             ReceiveError
     end.
 
-pgsql_extended_query_receive_loop0(#parameter_status{name=_Name, value=_Value}, LoopState, Fun, Acc0, QueryOptions, Conn) ->
+receive_loop0(#parameter_status{name=_Name, value=_Value}, LoopState, DecodeFun, Acc0, QueryOptions, Conn) ->
     %% State1 = handle_parameter(Name, Value, Conn),
-    pgsql_extended_query_receive_loop(LoopState, Fun, Acc0, QueryOptions, Conn);
-pgsql_extended_query_receive_loop0(#parse_complete{}, parse_complete, Fun, Acc0, QueryOptions, Conn) ->
-    pgsql_extended_query_receive_loop(bind_complete, Fun, Acc0, QueryOptions, Conn);
+    receive_loop(LoopState, DecodeFun, Acc0, QueryOptions, Conn);
+receive_loop0(#parse_complete{}, parse_complete, DecodeFun, Acc0, QueryOptions, Conn) ->
+    receive_loop(bind_complete, DecodeFun, Acc0, QueryOptions, Conn);
 
 %% Path where we ask the backend about what it expects.
 %% We ignore row descriptions sent before bind as the format codes are null.
-pgsql_extended_query_receive_loop0(#parse_complete{}, {parse_complete_with_params, Parameters}, Fun, Acc0, QueryOptions, Conn) ->
-    pgsql_extended_query_receive_loop({parameter_description_with_params, Parameters}, Fun, Acc0, QueryOptions, Conn);
-pgsql_extended_query_receive_loop0(#parameter_description{data_types=ParameterDataTypes}, {parameter_description_with_params, Parameters}, Fun, Acc0, QueryOptions, Conn=#conn{socket=Socket, pool=Pool}) ->
+receive_loop0(#parse_complete{}, {parse_complete_with_params, Parameters}, DecodeFun, Acc0, QueryOptions, Conn) ->
+    receive_loop({parameter_description_with_params, Parameters}, DecodeFun, Acc0, QueryOptions, Conn);
+receive_loop0(#parameter_description{data_types=ParameterDataTypes},
+              {parameter_description_with_params, Parameters}, DecodeFun,
+              Acc0, QueryOptions, Conn=#conn{socket=Socket, pool=Pool}) ->
     pgo_query_cache:insert(Pool, get(query), ParameterDataTypes),
     oob_update_oid_map_if_required(Conn, ParameterDataTypes, QueryOptions),
     PacketT = encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, true),
@@ -315,7 +323,7 @@ pgsql_extended_query_receive_loop0(#parameter_description{data_types=ParameterDa
         {ok, SinglePacket} ->
             case gen_tcp:send(Socket, SinglePacket) of
                 ok ->
-                    pgsql_extended_query_receive_loop(pre_bind_row_description, Fun, Acc0, QueryOptions, Conn);
+                    receive_loop(pre_bind_row_description, DecodeFun, Acc0, QueryOptions, Conn);
                 {error, _} = SendError ->
                     SendError
             end;
@@ -325,39 +333,43 @@ pgsql_extended_query_receive_loop0(#parameter_description{data_types=ParameterDa
                 {error, _} = SendSyncPacketError -> SendSyncPacketError
             end
     end;
-pgsql_extended_query_receive_loop0(#row_description{}, pre_bind_row_description, Fun, Acc0, QueryOptions, Conn) ->
-    pgsql_extended_query_receive_loop(bind_complete, Fun, Acc0, QueryOptions, Conn);
-pgsql_extended_query_receive_loop0(#no_data{}, pre_bind_row_description, Fun, Acc0, QueryOptions, Conn) ->
-    pgsql_extended_query_receive_loop(bind_complete, Fun, Acc0, QueryOptions, Conn);
+receive_loop0(#row_description{}, pre_bind_row_description, DecodeFun, Acc0, QueryOptions, Conn) ->
+    receive_loop(bind_complete, DecodeFun, Acc0, QueryOptions, Conn);
+receive_loop0(#no_data{}, pre_bind_row_description, DecodeFun, Acc0, QueryOptions, Conn) ->
+    receive_loop(bind_complete, DecodeFun, Acc0, QueryOptions, Conn);
 
-% Common paths after bind.
-pgsql_extended_query_receive_loop0(#bind_complete{}, bind_complete, Fun, Acc0, QueryOptions, Conn) ->
-    pgsql_extended_query_receive_loop(row_description, Fun, Acc0, QueryOptions, Conn);
-pgsql_extended_query_receive_loop0(#no_data{}, row_description, Fun, Acc0, QueryOptions, Conn) ->
-    pgsql_extended_query_receive_loop(no_data, Fun, Acc0, QueryOptions, Conn);
-pgsql_extended_query_receive_loop0(#row_description{fields = Fields}, row_description, Fun, Acc0, QueryOptions, Conn) ->
+%% Common paths after bind.
+receive_loop0(#bind_complete{}, bind_complete, DecodeFun, Acc0, QueryOptions, Conn) ->
+    receive_loop(row_description, DecodeFun, Acc0, QueryOptions, Conn);
+receive_loop0(#no_data{}, row_description, DecodeFun, Acc0, QueryOptions, Conn) ->
+    receive_loop(no_data, DecodeFun, Acc0, QueryOptions, Conn);
+receive_loop0(#row_description{fields = Fields}, row_description, DecodeFun, Acc0, QueryOptions, Conn) ->
     oob_update_oid_map_from_fields_if_required(Conn, Fields, QueryOptions),
-    pgsql_extended_query_receive_loop({rows, Fields}, Fun, Acc0, QueryOptions, Conn);
-pgsql_extended_query_receive_loop0(#data_row{values = Values}, {rows, Fields} = LoopState, Fun, Acc0, QueryOptions, Conn=#conn{pool=Pool}) ->
+    receive_loop({rows, Fields}, DecodeFun, Acc0, QueryOptions, Conn);
+receive_loop0(#data_row{values = Values}, {rows, Fields} = LoopState, undefined=DecodeFun,
+              Acc0, QueryOptions, Conn=#conn{pool=Pool}) ->
     DecodedRow = pgo_protocol:decode_row(Fields, Values, Pool, QueryOptions),
-    pgsql_extended_query_receive_loop(LoopState, Fun, [Fun(DecodedRow, Fields) | Acc0], QueryOptions, Conn);
-pgsql_extended_query_receive_loop0(#command_complete{command_tag = Tag}, _LoopState, Fun, Acc0, QueryOptions, Conn) ->
+    receive_loop(LoopState, DecodeFun, [DecodedRow | Acc0], QueryOptions, Conn);
+receive_loop0(#data_row{values = Values}, {rows, Fields} = LoopState, DecodeFun, Acc0, QueryOptions, Conn=#conn{pool=Pool}) ->
+    DecodedRow = pgo_protocol:decode_row(Fields, Values, Pool, QueryOptions),
+    receive_loop(LoopState, DecodeFun, [DecodeFun(DecodedRow, Fields) | Acc0], QueryOptions, Conn);
+receive_loop0(#command_complete{command_tag = Tag}, _LoopState, DecodeFun, Acc0, QueryOptions, Conn) ->
     {Command, NumRows} = decode_tag(Tag),
-    pgsql_extended_query_receive_loop({result, #{command => Command,
-                                                 num_rows => NumRows,
-                                                 rows => lists:reverse(Acc0)}}, Fun, Acc0, QueryOptions, Conn);
-%% pgsql_extended_query_receive_loop0(#portal_suspended{}, LoopState, Fun, Acc0, QueryOptions, Conn={_,S}) ->
+    receive_loop({result, #{command => Command,
+                            num_rows => NumRows,
+                            rows => lists:reverse(Acc0)}}, DecodeFun, Acc0, QueryOptions, Conn);
+%% receive_loop0(#portal_suspended{}, LoopState, DecodeFun, Acc0, QueryOptions, Conn={_,S}) ->
 %%     ExecuteMessage = pgo_protocol:encode_execute_message("", 0),
 %%     FlushMessage = pgo_protocol:encode_flush_message(),
 %%     SinglePacket = [ExecuteMessage, FlushMessage],
 %%     case gen_tcp:send(S, SinglePacket) of
-%%         ok -> pgsql_extended_query_receive_loop(LoopState, Fun, Acc0, QueryOptions, Conn);
+%%         ok -> receive_loop(LoopState, DecodeFun, Acc0, QueryOptions, Conn);
 %%         {error, _} = SendSinglePacketError ->
 %%             SendSinglePacketError
 %%     end;
-pgsql_extended_query_receive_loop0(#ready_for_query{}, {result, Result}, _Fun, _Acc0, _QueryOptions, __Socket) ->
+receive_loop0(#ready_for_query{}, {result, Result}, _Fun, _Acc0, _QueryOptions, __Socket) ->
     Result;
-pgsql_extended_query_receive_loop0(#error_response{fields = Fields}, LoopState, _Fun, _Acc0, _QueryOptions, Conn=#conn{socket=Socket}) ->
+receive_loop0(#error_response{fields = Fields}, LoopState, _Fun, _Acc0, _QueryOptions, Conn=#conn{socket=Socket}) ->
     Error = {error, {pgsql_error, Fields}},
     % We already sent a Sync except when we sent a Flush :-)
     % - when we asked for the statement description
@@ -376,10 +388,10 @@ pgsql_extended_query_receive_loop0(#error_response{fields = Fields}, LoopState, 
         false ->
             flush_until_ready_for_query(Error, Conn)
     end;
-pgsql_extended_query_receive_loop0(#ready_for_query{} = Message, _LoopState, _Fun, _Acc0, _QueryOptions, _Conn) ->
+receive_loop0(#ready_for_query{} = Message, _LoopState, _Fun, _Acc0, _QueryOptions, _Conn) ->
     Result = {error, {unexpected_message, Message}},
     Result;
-pgsql_extended_query_receive_loop0(Message, _LoopState, _Fun, _Acc0, _QueryOptions, Conn=#conn{socket=Socket}) ->
+receive_loop0(Message, _LoopState, _Fun, _Acc0, _QueryOptions, Conn=#conn{socket=Socket}) ->
     gen_tcp:send(Socket, pgo_protocol:encode_sync_message()),
     Error = {error, {unexpected_message, Message}},
     flush_until_ready_for_query(Error, Conn).

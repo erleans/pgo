@@ -103,7 +103,7 @@ query(Query, Params, Options) ->
 %% @equiv transaction(default, Fun, [])
 -spec transaction(fun(() -> any())) -> any() | {error, any()}.
 transaction(Fun) ->
-    transaction(default, Fun, []).
+    transaction(default, Fun, #{}).
 
 %% @equiv transaction(default, Fun, Options)
 -spec transaction(fun(() -> any()), options()) -> any() | {error, any()}.
@@ -111,21 +111,24 @@ transaction(Fun, Options) when is_function(Fun) ->
     transaction(Fun, Options).
 
 %% @doc Runs a function, passing it a connection, in a SQL transaction.
--spec transaction(pool(), fun(() -> any()), [pool_options()]) -> any() | {error, any()}.
+-spec transaction(pool(), fun(() -> any()), options()) -> any() | {error, any()}.
 transaction(Pool, Fun, Options) ->
     case get(pgo_transaction_connection) of
         undefined ->
-            case checkout(Pool, Options) of
+            PoolOptions = maps:get(pool_options, Options, []),
+            case checkout(Pool, PoolOptions) of
                 {ok, Ref, Conn=#conn{trace_default=TraceDefault}} ->
                     DoTrace = maps:get(trace, Options, TraceDefault),
                     {SpanCtx, ParentCtx} = maybe_start_span(DoTrace,
                                                             <<"pgo:transaction/2">>,
                                                             #{}),
                     try
-                        #{command := 'begin'} = pgo_handler:extended_query(Conn, "BEGIN", [], #{queue_time => undefined}),
+                        #{command := 'begin'} = pgo_handler:extended_query(Conn, "BEGIN", [],
+                                                                           #{queue_time => undefined}),
                         put(pgo_transaction_connection, Conn),
                         Result = Fun(),
-                        #{command := commit} = pgo_handler:extended_query(Conn, "COMMIT", [], #{queue_time => undefined}),
+                        #{command := commit} = pgo_handler:extended_query(Conn, "COMMIT", [],
+                                                                          #{queue_time => undefined}),
                         Result
                     catch
                         ?WITH_STACKTRACE(T, R, S)
@@ -179,7 +182,7 @@ with_conn(Conn, Fun) ->
 checkout(Pool) ->
     pgo_pool:checkout(Pool, []).
 
--spec checkout(atom(), options()) -> {ok, pgo_pool:pool_ref(), pgo_pool:conn()} | {error, any()}.
+-spec checkout(atom(), [pool_options()]) -> {ok, pgo_pool:pool_ref(), pgo_pool:conn()} | {error, any()}.
 checkout(Pool, Options) ->
     pgo_pool:checkout(Pool, Options).
 

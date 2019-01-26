@@ -113,7 +113,8 @@ encode_parse_message(PreparedStatementName, Query, DataTypes) ->
     QueryBin = iolist_to_binary(Query),
     DataTypesBin = list_to_binary([<<DataTypeOid:32/integer>> || DataTypeOid <- DataTypes]),
     DataTypesCount = length(DataTypes),
-    Packet = <<PreparedStatementNameBin/binary, 0, QueryBin/binary, 0, DataTypesCount:16/integer, DataTypesBin/binary>>,
+    Packet = <<PreparedStatementNameBin/binary, 0, QueryBin/binary, 0,
+               DataTypesCount:16/integer, DataTypesBin/binary>>,
     PacketLen = byte_size(Packet) + 4,
     <<$P, PacketLen:32/integer, Packet/binary>>.
 
@@ -128,10 +129,12 @@ encode_bind_message(PortalName, StatementName, Parameters, ParametersDataTypes, 
                               [] -> [{Parameter, undefined} || Parameter <- Parameters];
                               _ -> lists:zip(Parameters, ParametersDataTypes)
                           end,
-    ParametersValues = [encode_parameter(Parameter, Type, OIDMap, IntegerDateTimes) || {Parameter, Type} <- ParametersWithTypes],
+    ParametersValues = [encode_parameter(Parameter, Type, OIDMap, IntegerDateTimes)
+                        || {Parameter, Type} <- ParametersWithTypes],
     ParametersFormatsBin = [ParametersCountBin | [<<1:16/integer>> || _ <- ParametersValues]],
     Results = <<1:16/integer, 1:16/integer>>,   % We want all results in binary format.
-    Packet = [PortalName, 0, StatementName, 0, ParametersFormatsBin, ParametersCountBin, ParametersValues, Results],
+    Packet = [PortalName, 0, StatementName, 0, ParametersFormatsBin,
+              ParametersCountBin, ParametersValues, Results],
     PacketLen = iolist_size(Packet) + 4,
     [<<$B, PacketLen:32/integer>> | Packet].
 
@@ -561,25 +564,38 @@ decode_copy_done_message(Payload) ->
 
 decode_copy_in_response_message(Payload) ->
     case decode_copy_response_message(Payload) of
-        {ok, {OverallFormat, N, ColumnFormats}} -> {ok, #copy_in_response{format = OverallFormat, columns = N, column_formats = ColumnFormats}};
-        {error, _} -> {error, {unknow_message, copy_in_response, Payload}}
+        {ok, {OverallFormat, N, ColumnFormats}} ->
+            {ok, #copy_in_response{format=OverallFormat,
+                                   columns=N,
+                                   column_formats=ColumnFormats}};
+        {error, _} ->
+            {error, {unknow_message, copy_in_response, Payload}}
     end.
 
 decode_copy_out_response_message(Payload) ->
     case decode_copy_response_message(Payload) of
-        {ok, {OverallFormat, N, ColumnFormats}} -> {ok, #copy_out_response{format = OverallFormat, columns = N, column_formats = ColumnFormats}};
-        {error, _} -> {error, {unknow_message, copy_out_response, Payload}}
+        {ok, {OverallFormat, N, ColumnFormats}} ->
+            {ok, #copy_out_response{format=OverallFormat,
+                                    columns=N,
+                                    column_formats=ColumnFormats}};
+        {error, _} ->
+            {error, {unknow_message, copy_out_response, Payload}}
     end.
 
 decode_copy_both_response_message(Payload) ->
     case decode_copy_response_message(Payload) of
-        {ok, {OverallFormat, N, ColumnFormats}} -> {ok, #copy_both_response{format = OverallFormat, columns = N, column_formats = ColumnFormats}};
-        {error, _} -> {error, {unknow_message, copy_both_response, Payload}}
+        {ok, {OverallFormat, N, ColumnFormats}} ->
+            {ok, #copy_both_response{format=OverallFormat,
+                                     columns=N,
+                                     column_formats=ColumnFormats}};
+        {error, _} ->
+            {error, {unknow_message, copy_both_response, Payload}}
     end.
 
 decode_data_row_message(<<N:16/integer, Rest/binary>> = Payload) ->
     case decode_data_row_values(N, Rest) of
-        {ok, Values} -> {ok, #data_row{values = Values}};
+        {ok, Values} ->
+            {ok, #data_row{values=Values}};
         {error, _} ->
             {error, {unknow_message, data_row, Payload}}
     end;
@@ -606,8 +622,10 @@ decode_error_response_message(Payload) ->
         {error, _} -> {error, {unknown_message, error_response, Payload}}
     end.
 
-decode_function_call_response_message(<<-1:32/signed-integer>>) -> {ok, #function_call_response{value = null}};
-decode_function_call_response_message(<<Len:32/integer, Value:Len/binary>>) -> {ok, #function_call_response{value = Value}};
+decode_function_call_response_message(<<-1:32/signed-integer>>) ->
+    {ok, #function_call_response{value = null}};
+decode_function_call_response_message(<<Len:32/integer, Value:Len/binary>>) ->
+    {ok, #function_call_response{value = Value}};
 decode_function_call_response_message(Payload) ->
     {error, {unknown_message, function_call_response, Payload}}.
 
@@ -625,10 +643,15 @@ decode_notification_response_message(<<ProcID:32/integer, Rest0/binary>> = Paylo
     case decode_string(Rest0) of
         {ok, Channel, Rest1} ->
             case decode_string(Rest1) of
-                {ok, PayloadStr, <<>>} -> {ok, #notification_response{procid = ProcID, channel = Channel, payload = PayloadStr}};
-                {error, _} -> {error, {unknown_message, notification_response, Payload}}
+                {ok, PayloadStr, <<>>} ->
+                    {ok, #notification_response{procid=ProcID,
+                                                channel=Channel,
+                                                payload=PayloadStr}};
+                {error, _} ->
+                    {error, {unknown_message, notification_response, Payload}}
             end;
-        {error, _} -> {error, {unknown_message, notification_response, Payload}}
+        {error, _} ->
+            {error, {unknown_message, notification_response, Payload}}
     end;
 decode_notification_response_message(Payload) ->
     {error, {unknown_message, notification_response, Payload}}.
@@ -637,7 +660,8 @@ decode_parameter_description_message(<<Count:16/integer, Rest/binary>> = Payload
     ParameterDataTypes = decode_parameter_data_types(Rest),
     if
         Count =:= length(ParameterDataTypes) ->
-            {ok, #parameter_description{count = Count, data_types = ParameterDataTypes}};
+            {ok, #parameter_description{count=Count,
+                                        data_types=ParameterDataTypes}};
         true ->
             {error, {unknown_message, parameter_description, Payload}}
     end;
@@ -648,10 +672,14 @@ decode_parameter_status_message(Payload) ->
     case decode_string(Payload) of
         {ok, Name, Rest0} ->
             case decode_string(Rest0) of
-                {ok, Value, <<>>} -> {ok, #parameter_status{name = Name, value = Value}};
-                {error, _} -> {error, {unknown_message, parameter_status, Payload}}
+                {ok, Value, <<>>} ->
+                    {ok, #parameter_status{name=Name,
+                                           value=Value}};
+                {error, _} ->
+                    {error, {unknown_message, parameter_status, Payload}}
             end;
-        {error, _} -> {error, {unknown_message, parameter_status, Payload}}
+        {error, _} ->
+            {error, {unknown_message, parameter_status, Payload}}
     end.
 
 decode_parse_complete_message(<<>>) -> {ok, #parse_complete{}};
@@ -662,9 +690,9 @@ decode_portal_suspended_message(<<>>) -> {ok, #portal_suspended{}};
 decode_portal_suspended_message(Payload) ->
     {error, {unknown_message, portal_suspended, Payload}}.
 
-decode_ready_for_query_message(<<$I>>) -> {ok, #ready_for_query{transaction_status = idle}};
-decode_ready_for_query_message(<<$T>>) -> {ok, #ready_for_query{transaction_status = transaction}};
-decode_ready_for_query_message(<<$E>>) -> {ok, #ready_for_query{transaction_status = error}};
+decode_ready_for_query_message(<<$I>>) -> {ok, #ready_for_query{transaction_status=idle}};
+decode_ready_for_query_message(<<$T>>) -> {ok, #ready_for_query{transaction_status=transaction}};
+decode_ready_for_query_message(<<$E>>) -> {ok, #ready_for_query{transaction_status=error}};
 decode_ready_for_query_message(Payload) ->
     {error, {unknown_message, ready_for_query, Payload}}.
 
@@ -706,7 +734,8 @@ decode_row_description_message0(Count, Binary, Acc) ->
 
 %%% Helper functions.
 
-decode_copy_response_message(<<Format:8/integer, N:16/integer, Rest/binary>>) when Format =:= 0 orelse Format =:= 1 ->
+decode_copy_response_message(<<Format:8/integer, N:16/integer, Rest/binary>>) when Format =:= 0
+                                                                                   orelse Format =:= 1 ->
     {ok, OverallFormat} = decode_format_code(Format),
     if
         byte_size(Rest) =:= N * 2 ->
@@ -872,22 +901,33 @@ decode_value_bin(?UUIDOID, Value, _OIDMap, _DecodeOptions) ->
     UUIDStr = io_lib:format("~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b", [UUID_A, UUID_B, UUID_C, UUID_D, UUID_E]),
     list_to_binary(UUIDStr);
     %% Value;
-decode_value_bin(?DATEOID, <<Date:32/signed-integer>>, _OIDMap, _DecodeOptions) -> calendar:gregorian_days_to_date(Date + ?POSTGRESQL_GD_EPOCH);
-decode_value_bin(?TIMEOID, TimeBin, _OIDMap, DecodeOptions) -> decode_time(TimeBin, not proplists:get_bool(float_datetimes, DecodeOptions), DecodeOptions);
-decode_value_bin(?TIMETZOID, TimeTZBin, _OIDMap, DecodeOptions) -> decode_time_tz(TimeTZBin, proplists:get_bool(integer_datetimes, DecodeOptions), DecodeOptions);
+decode_value_bin(?DATEOID, <<Date:32/signed-integer>>, _OIDMap, _DecodeOptions) ->
+    calendar:gregorian_days_to_date(Date + ?POSTGRESQL_GD_EPOCH);
+decode_value_bin(?TIMEOID, TimeBin, _OIDMap, DecodeOptions) ->
+    decode_time(TimeBin, not proplists:get_bool(float_datetimes, DecodeOptions), DecodeOptions);
+decode_value_bin(?TIMETZOID, TimeTZBin, _OIDMap, DecodeOptions) ->
+    decode_time_tz(TimeTZBin, proplists:get_bool(integer_datetimes, DecodeOptions), DecodeOptions);
 decode_value_bin(?TIMESTAMPOID, TimestampBin, _OIDMap, DecodeOptions) ->
     decode_timestamp(TimestampBin, not proplists:get_bool(float_datetimes, DecodeOptions), DecodeOptions);
-decode_value_bin(?TIMESTAMPTZOID, TimestampBin, _OIDMap, DecodeOptions) -> decode_timestamp(TimestampBin, not proplists:get_bool(float_datetimes, DecodeOptions), DecodeOptions);
-decode_value_bin(?NUMERICOID, NumericBin, _OIDMap, _DecodeOptions) -> decode_numeric_bin(NumericBin);
+decode_value_bin(?TIMESTAMPTZOID, TimestampBin, _OIDMap, DecodeOptions) ->
+    decode_timestamp(TimestampBin, not proplists:get_bool(float_datetimes, DecodeOptions), DecodeOptions);
+decode_value_bin(?NUMERICOID, NumericBin, _OIDMap, _DecodeOptions) ->
+    decode_numeric_bin(NumericBin);
 decode_value_bin(?POINTOID, <<X:64/float, Y:64/float>>, _OIDMap, _DecodeOptions) ->
     %% TODO: make configurable between this and returning #{x => X, y => Y}
     #{long => X, lat => Y};
-decode_value_bin(?LSEGOID, <<P1X:64/float, P1Y:64/float, P2X:64/float, P2Y:64/float>>, _OIDMap, _DecodeOptions) -> {lseg, {P1X, P1Y}, {P2X, P2Y}};
-decode_value_bin(?BOXOID, <<P1X:64/float, P1Y:64/float, P2X:64/float, P2Y:64/float>>, _OIDMap, _DecodeOptions) -> {box, {P1X, P1Y}, {P2X, P2Y}};
-decode_value_bin(?PATHOID, <<1:8/unsigned-integer, PointsBin/binary>>, _OIDMap, _DecodeOptions) -> {path, closed, decode_points_bin(PointsBin)};
-decode_value_bin(?PATHOID, <<0:8/unsigned-integer, PointsBin/binary>>, _OIDMap, _DecodeOptions) -> {path, open, decode_points_bin(PointsBin)};
-decode_value_bin(?POLYGONOID, Points, _OIDMap, _DecodeOptions) -> {polygon, decode_points_bin(Points)};
-decode_value_bin(?VOIDOID, <<>>, _OIDMap, _DecodeOptions) -> null;
+decode_value_bin(?LSEGOID, <<P1X:64/float, P1Y:64/float, P2X:64/float, P2Y:64/float>>, _OIDMap, _DecodeOptions) ->
+    {lseg, {P1X, P1Y}, {P2X, P2Y}};
+decode_value_bin(?BOXOID, <<P1X:64/float, P1Y:64/float, P2X:64/float, P2Y:64/float>>, _OIDMap, _DecodeOptions) ->
+    {box, {P1X, P1Y}, {P2X, P2Y}};
+decode_value_bin(?PATHOID, <<1:8/unsigned-integer, PointsBin/binary>>, _OIDMap, _DecodeOptions) ->
+    {path, closed, decode_points_bin(PointsBin)};
+decode_value_bin(?PATHOID, <<0:8/unsigned-integer, PointsBin/binary>>, _OIDMap, _DecodeOptions) ->
+    {path, open, decode_points_bin(PointsBin)};
+decode_value_bin(?POLYGONOID, Points, _OIDMap, _DecodeOptions) ->
+    {polygon, decode_points_bin(Points)};
+decode_value_bin(?VOIDOID, <<>>, _OIDMap, _DecodeOptions) ->
+    null;
 decode_value_bin(TypeOID, Value, OIDMap, DecodeOptions) ->
     Type = decode_oid(TypeOID, OIDMap),
     if not is_atom(Type) -> {Type, Value};
