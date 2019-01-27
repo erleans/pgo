@@ -2,7 +2,7 @@
 
 [![CircleCI](https://circleci.com/gh/erleans/pgo.svg?style=svg)](https://circleci.com/gh/erleans/pgo)
 [![codecov](https://codecov.io/gh/erleans/pgo/branch/master/graph/badge.svg)](https://codecov.io/gh/erleans/pgo)
-[![Hex.pm](https://img.shields.io/hexpm/v//pgo.svg?maxAge=2592000)](https://hex.pm/packages/pgo)
+[![Hex.pm](https://img.shields.io/hexpm/v/pgo.svg?style=flat)](https://hex.pm/packages/pgo)
 
 PG...Oh god not nother Postgres client in Erlang...
 
