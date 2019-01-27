@@ -10,11 +10,11 @@
          terminate/3]).
 
 -record(data, {pool        :: atom(),
-               db_options  :: list(),
+               pool_config  :: pgo:pool_config(),
                last_reload :: integer() | undefined}).
 
-start_link(Pool, DBOptions) ->
-    gen_statem:start_link(?MODULE, [Pool, DBOptions], []).
+start_link(Pool, PoolConfig) ->
+    gen_statem:start_link(?MODULE, [Pool, PoolConfig], []).
 
 reload(Pid) ->
     gen_statem:call(Pid, {reload, erlang:monotonic_time()}).
@@ -22,18 +22,18 @@ reload(Pid) ->
 reload_cast(Pid) ->
     gen_statem:cast(Pid, {reload, erlang:monotonic_time()}).
 
-init([Pool, DBOptions]) ->
+init([Pool, PoolConfig]) ->
     erlang:process_flag(trap_exit, true),
     ets:new(Pool, [named_table, protected]),
-    {ok, ready, #data{pool=Pool, db_options=DBOptions},
+    {ok, ready, #data{pool=Pool, pool_config=PoolConfig},
      {next_event, internal, load}}.
 
 callback_mode() ->
     state_functions.
 
 ready(internal, load, Data=#data{pool=Pool,
-                                 db_options=DBOptions}) ->
-    case load(Pool, -1, 0, DBOptions) of
+                                 pool_config=PoolConfig}) ->
+    case load(Pool, -1, 0, PoolConfig) of
         failed ->
             %% not using a timer because this initial load, so want to block
             timer:sleep(500),
@@ -42,14 +42,14 @@ ready(internal, load, Data=#data{pool=Pool,
             {keep_state, Data#data{last_reload=erlang:monotonic_time()}}
     end;
 ready({call, From}, {reload, RequestTime}, Data=#data{pool=Pool,
-                                                      db_options=DBOptions,
+                                                      pool_config=PoolConfig,
                                                       last_reload=LastReload}) ->
-    load(Pool, LastReload, RequestTime, DBOptions),
+    load(Pool, LastReload, RequestTime, PoolConfig),
     {keep_state, Data#data{last_reload=erlang:monotonic_time()}, [{reply, From, ok}]};
 ready(cast, {reload, RequestTime}, Data=#data{pool=Pool,
-                                              db_options=DBOptions,
+                                              pool_config=PoolConfig,
                                               last_reload=LastReload}) ->
-    load(Pool, LastReload, RequestTime, DBOptions),
+    load(Pool, LastReload, RequestTime, PoolConfig),
     {keep_state, Data#data{last_reload=erlang:monotonic_time()}};
 ready(_, _, _Data) ->
     keep_state_and_data.
@@ -57,8 +57,8 @@ ready(_, _, _Data) ->
 terminate(_, _, #data{pool=Pool}) ->
     ets:delete(Pool).
 
-load(Pool, LastReload, RequestTime, DBOptions) when LastReload < RequestTime ->
-    try pgo_handler:pgsql_open(Pool, DBOptions, []) of
+load(Pool, LastReload, RequestTime, PoolConfig) when LastReload < RequestTime ->
+    try pgo_handler:pgsql_open(Pool, PoolConfig) of
         {ok, Conn} ->
             load_and_update_types(Conn, Pool);
         {error, _} ->

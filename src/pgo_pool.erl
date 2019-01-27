@@ -3,7 +3,6 @@
 -module(pgo_pool).
 
 -export([start_link/2,
-         start_link/3,
          checkout/2,
          checkin/3,
          disconnect/4,
@@ -41,11 +40,8 @@ tid(Pool) ->
     gen_server:call(Pool, tid).
 -endif.
 
-start_link(Pool, DBSettings) ->
-    start_link(Pool, DBSettings, []).
-
-start_link(Pool, DBSettings, Options) ->
-    gen_server:start_link({local, Pool}, ?MODULE, {Pool, DBSettings, Options}, []).
+start_link(Pool, PoolConfig) ->
+    gen_server:start_link({local, Pool}, ?MODULE, {Pool, PoolConfig}, []).
 
 -spec checkout(atom(), list()) -> {ok, ref(), conn()} | {error, any()}.
 checkout(Pool, Opts) ->
@@ -87,19 +83,19 @@ format_error(none_available_no_queuing) ->
 format_error(client_timeout) ->
     "client timed out".
 
-init({Pool, DBSettings, Options}) ->
+init({Pool, PoolConfig}) ->
     process_flag(trap_exit, true),
-    Queue = ets:new(?MODULE, [protected, ordered_set]),
-    {ok, _} = pgo_pool_sup:start_link(Queue, Pool, DBSettings, Options),
+    QueueTid = ets:new(?MODULE, [protected, ordered_set]),
+    {ok, _} = pgo_pool_sup:start_link(QueueTid, Pool, PoolConfig),
 
-    Target = proplists:get_value(queue_target, DBSettings, ?QUEUE_TARGET),
-    Interval = proplists:get_value(queue_interval, DBSettings, ?QUEUE_INTERVAL),
-    IdleInterval = proplists:get_value(idle_interval, DBSettings, ?IDLE_INTERVAL),
+    Target = maps:get(queue_target, PoolConfig, ?QUEUE_TARGET),
+    Interval = maps:get(queue_interval, PoolConfig, ?QUEUE_INTERVAL),
+    IdleInterval = maps:get(idle_interval, PoolConfig, ?IDLE_INTERVAL),
     Now = erlang:monotonic_time(?TIME_UNIT),
     Codel = #{target => Target, interval => Interval, delay => 0, slow => false,
               next => Now, poll => undefined, idle_interval => IdleInterval, idle => undefined},
     Codel1 = start_idle(Now, Now, start_poll(Now, Now, Codel)),
-    {ok, {busy, Queue, Codel1}}.
+    {ok, {busy, QueueTid, Codel1}}.
 
 handle_call(tid, _From, {_, Queue, _} = D) ->
     {reply, Queue, D}.

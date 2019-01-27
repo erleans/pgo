@@ -7,8 +7,9 @@
 -record(conn, {owner :: pid(),
                socket :: gen_tcp:socket(),
                pool :: atom(),
-               trace_default :: boolean(),
-               default_query_opts :: []}).
+               queue :: boolean(),
+               trace :: boolean(),
+               decode_opts :: []}).
 
 % Backend messages
 -type pgsql_oid() :: pos_integer().

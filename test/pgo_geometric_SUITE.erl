@@ -10,7 +10,9 @@ all() -> [select, insert].
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
 
-    {ok, _} = pgo_sup:start_child(default, [{size, 1}, {database, "test"}, {user, "test"}]),
+    {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
+                                             database => "test",
+                                             user => "test"}),
 
     Config.
 

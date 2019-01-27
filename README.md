@@ -26,17 +26,17 @@ To try `pgo` simply modify `config/example.config` by replacing the `host`, `dat
 
 ```erlang
 [
-  {pgo, [{pools, [{default, [{size, 10},
-                             {host, "127.0.0.1"},
-                             {database, "test"},
-                             {user, "test"}]}]}]}
+  {pgo, [{pools, [{default, #{pool_size => 10,
+                              host => "127.0.0.1",
+                              database => "test",
+                              user => "test"}}]}]}
 ].
 ```
 
 `default` is the name of the pool, `size` is the number of connections to create for the pool. Or you can start the pool through `pgo:start_pool/2`:
 
 ``` erlang
-> pgo:start_pool(default, [{size, 5}, {host, "127.0.0.1"}, {database, "test"}, {user, "test"}]). 
+> pgo:start_pool(default, #{pool_size => 5, host => "127.0.0.1", database => "test", user => "test"}). 
 ```
 
 Then start a shell with `rebar3 shell`, it will boot the applications which will start the pool automatically if it is configured through `sys.config`.
@@ -51,6 +51,69 @@ Then start a shell with `rebar3 shell`, it will boot the applications which will
 #{command => insert,num_rows => 1,rows => []}
 ```
 
+## Options
+
+Pool configuration includes the Postgres connection information, pool configuration like size and defaults for options used at query time. 
+
+``` erlang
+#{host => string(),
+  port => integer(),
+  user => string(),
+  password => string(),
+  database => string(),
+
+  %% pool specific settings
+  pool_size => integer(),
+  queue_target => integer(),
+  queue_interval => integer(),
+  idle_interval => integer(),
+
+  %% defaults for options used at query time
+  queue => boolean(),
+  trace => boolean(),
+  decode_opts => [decode_option()]}
+```
+
+The query time options can also be set through options passed to `pgo:query/3`:
+
+``` erlang
+decode_fun() :: fun((row(), fields()) -> row()) | undefined.
+
+decode_option() :: return_rows_as_maps | {return_rows_as_maps, boolean()} |
+                   column_name_as_atom | {column_name_as_atom, boolean()} |
+                   {decode_fun, decode_fun()}.
+                         
+#{pool => atom(),
+  trace => boolean(),
+  queue => boolean(),
+  decode_opts => [decode_option()]}
+```
+
+### Query Options
+
+* `pool` (default: `default`): Name of the pool to use for checking out a connection to the database.
+* `return_rows_as_maps` (default: `false`): When `true` each row is returned as a map of column name to value instead of a list of values.
+* `column_name_as_atom` (default: `false`): If `true` converts each column name in the result to an atom.
+* `decode_fun` (default: `undefined`): Optional function for performing transformations on each row in a result. It must be a 2-arity function returning a list or map for the row and takes the row (as a list or map) and a list of `#row_description_field{}` records.
+* `queue` (default: `true`): Whether to wait for a connection from the pool if none are available.
+* `trace` (default: `false`): `pgo` is instrumented with [OpenCensus](https://opencensus.io/) and when this option is `true` a span will be created (if sampled).
+
+### Database Settings
+
+* `host` (default: `127.0.0.1`): Database server hostname.
+* `port` (default: 5432): Port the server is listening on.
+* `user`: Username to connect to database as.
+* `password`: Password for the user.
+* `database`: Name of database to use.
+* `ssl` (default: `false`): Whether to use SSL or not.
+* `ssl_options`: List of SSL options to use if `ssl` is `true`. See the [Erlang SSL connect](http://erlang.org/doc/man/ssl.html#connect-2) options.
+
+### Pool Settings
+
+* `pool_size` (default: 1): Number of connections to keep open with the database
+* `queue_target` (default: 50) and `queue_interval` (default: 1000): Checking out connections is handled through a queue. If it takes longer than `queue_target` to get out of the queue for longer than `queue_interval` then the `queue_target` will be doubled and checkouts will start to be dropped if that target is surpassed.
+* `idle_interval` (default: 1000): The database is pinged every `idle_interval` when the connection is idle.
+
 ## Telemetry and Tracing
 
 A [Telemetry](https://github.com/beam-telemetry/telemetry) event `[pgo, query]` can be attached to for receiving the time a query takes as well as other metadata for each query.
@@ -58,8 +121,10 @@ A [Telemetry](https://github.com/beam-telemetry/telemetry) event `[pgo, query]` 
 [OpenCensus](https://opencensus.io/) spans can be enabled for queries and transactions by either setting the `trace_default` to `true` for the pool:
 
 ``` erlang
-> pgo:start_pool(default, [{trace_default, true}, {size, 5}, {host, "127.0.0.1"}, 
-                           {database, "test"}, {user, "test"}]). 
+> pgo:start_pool(default, #{host => "127.0.0.1", 
+                            database => "test", 
+                            user => "test",
+                            pool_size => 5}]). 
 ```
 
 Or by passing `#{trace => true}` in the options for a query or transaction:

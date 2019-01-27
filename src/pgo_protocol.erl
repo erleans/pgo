@@ -18,7 +18,7 @@
          encode_copy_done/0,
          encode_copy_fail/1,
 
-         decode_message/2,
+         decode_message/3,
          decode_row/4,
 
          bind_requires_statement_description/1]).
@@ -52,7 +52,7 @@
 %%--------------------------------------------------------------------
 %% @doc Encode the startup message.
 %%
--spec encode_startup_message([{iodata(), iodata()}]) -> binary().
+-spec encode_startup_message([{iodata(), iodata()}]) -> iolist().
 encode_startup_message(Parameters) ->
     EncodedParams = [[Key, 0, Value, 0] || {Key, Value} <- Parameters],
     Packet = [?PROTOCOL_VERSION_MAJOR, ?PROTOCOL_VERSION_MINOR, EncodedParams, 0],
@@ -83,7 +83,7 @@ encode_query_message(Query) ->
 %%--------------------------------------------------------------------
 %% @doc Encode a data segment of a COPY operation
 %%
--spec encode_copy_data_message(iodata()) -> binary().
+-spec encode_copy_data_message(iodata()) -> iolist().
 encode_copy_data_message(Message) ->
     MessageLen = iolist_size(Message) + 4,
     [<<$d, MessageLen:32/integer>>, Message].
@@ -106,7 +106,7 @@ encode_copy_fail(ErrorMessage) ->
 %%--------------------------------------------------------------------
 %% @doc Encode a parse message.
 %%
--spec encode_parse_message(iodata(), iodata(), [pgsql_oid()]) -> binary().
+-spec encode_parse_message(iodata(), iodata(), [pgsql_oid()]) -> iolist().
 encode_parse_message(PreparedStatementName, Query, DataTypes) ->
     DataTypesBin = [<<DataTypeOid:32/integer>> || DataTypeOid <- DataTypes],
     DataTypesCount = length(DataTypes),
@@ -437,7 +437,7 @@ bind_requires_statement_description([_OtherParam | Tail]) ->
 %%--------------------------------------------------------------------
 %% @doc Encode a describe message.
 %%
--spec encode_describe_message(portal | statement, iodata()) -> binary().
+-spec encode_describe_message(portal | statement, iodata()) -> iolist().
 encode_describe_message(PortalOrStatement, Name) ->
     MessageLen = iolist_size(Name) + 6,
     WhatByte = case PortalOrStatement of
@@ -449,7 +449,7 @@ encode_describe_message(PortalOrStatement, Name) ->
 %%--------------------------------------------------------------------
 %% @doc Encode an execute message.
 %%
--spec encode_execute_message(iodata(), non_neg_integer()) -> binary().
+-spec encode_execute_message(iodata(), non_neg_integer()) -> iolist().
 encode_execute_message(PortalName, MaxRows) ->
     MessageLen = iolist_size(PortalName) + 9,
     [<<$E, MessageLen:32/integer>>, PortalName, <<0, MaxRows:32/integer>>].
@@ -486,31 +486,32 @@ encode_string_message(Identifier, String) ->
 %%--------------------------------------------------------------------
 %% @doc Decode a message.
 %%
--spec decode_message(byte(), binary()) -> {ok, pgsql_backend_message()} | {error, any()}.
-decode_message($R, Payload) -> decode_authentication_message(Payload);
-decode_message($K, Payload) -> decode_backend_key_data_message(Payload);
-decode_message($2, Payload) -> decode_bind_complete_message(Payload);
-decode_message($3, Payload) -> decode_close_complete_message(Payload);
-decode_message($C, Payload) -> decode_command_complete_message(Payload);
-decode_message($d, Payload) -> decode_copy_data_message(Payload);
-decode_message($c, Payload) -> decode_copy_done_message(Payload);
-decode_message($G, Payload) -> decode_copy_in_response_message(Payload);
-decode_message($H, Payload) -> decode_copy_out_response_message(Payload);
-decode_message($W, Payload) -> decode_copy_both_response_message(Payload);
-decode_message($D, Payload) -> decode_data_row_message(Payload);
-decode_message($I, Payload) -> decode_empty_query_response_message(Payload);
-decode_message($E, Payload) -> decode_error_response_message(Payload);
-decode_message($V, Payload) -> decode_function_call_response_message(Payload);
-decode_message($n, Payload) -> decode_no_data_message(Payload);
-decode_message($N, Payload) -> decode_notice_response_message(Payload);
-decode_message($A, Payload) -> decode_notification_response_message(Payload);
-decode_message($t, Payload) -> decode_parameter_description_message(Payload);
-decode_message($S, Payload) -> decode_parameter_status_message(Payload);
-decode_message($1, Payload) -> decode_parse_complete_message(Payload);
-decode_message($s, Payload) -> decode_portal_suspended_message(Payload);
-decode_message($Z, Payload) -> decode_ready_for_query_message(Payload);
-decode_message($T, Payload) -> decode_row_description_message(Payload);
-decode_message(Other, _) ->
+-spec decode_message(byte(), binary(), [pgo:decode_option()])
+                    -> {ok, pgsql_backend_message()} | {error, any()}.
+decode_message($R, Payload, _DecodeOpts) -> decode_authentication_message(Payload);
+decode_message($K, Payload, _DecodeOpts) -> decode_backend_key_data_message(Payload);
+decode_message($2, Payload, _DecodeOpts) -> decode_bind_complete_message(Payload);
+decode_message($3, Payload, _DecodeOpts) -> decode_close_complete_message(Payload);
+decode_message($C, Payload, _DecodeOpts) -> decode_command_complete_message(Payload);
+decode_message($d, Payload, _DecodeOpts) -> decode_copy_data_message(Payload);
+decode_message($c, Payload, _DecodeOpts) -> decode_copy_done_message(Payload);
+decode_message($G, Payload, _DecodeOpts) -> decode_copy_in_response_message(Payload);
+decode_message($H, Payload, _DecodeOpts) -> decode_copy_out_response_message(Payload);
+decode_message($W, Payload, _DecodeOpts) -> decode_copy_both_response_message(Payload);
+decode_message($D, Payload, _DecodeOpts) -> decode_data_row_message(Payload);
+decode_message($I, Payload, _DecodeOpts) -> decode_empty_query_response_message(Payload);
+decode_message($E, Payload, _DecodeOpts) -> decode_error_response_message(Payload);
+decode_message($V, Payload, _DecodeOpts) -> decode_function_call_response_message(Payload);
+decode_message($n, Payload, _DecodeOpts) -> decode_no_data_message(Payload);
+decode_message($N, Payload, _DecodeOpts) -> decode_notice_response_message(Payload);
+decode_message($A, Payload, _DecodeOpts) -> decode_notification_response_message(Payload);
+decode_message($t, Payload, _DecodeOpts) -> decode_parameter_description_message(Payload);
+decode_message($S, Payload, _DecodeOpts) -> decode_parameter_status_message(Payload);
+decode_message($1, Payload, _DecodeOpts) -> decode_parse_complete_message(Payload);
+decode_message($s, Payload, _DecodeOpts) -> decode_portal_suspended_message(Payload);
+decode_message($Z, Payload, _DecodeOpts) -> decode_ready_for_query_message(Payload);
+decode_message($T, Payload, DecodeOpts) -> decode_row_description_message(Payload, DecodeOpts);
+decode_message(Other, _, _) ->
     {error, {unknown_message_type, Other}}.
 
 decode_authentication_message(<<0:32/integer>>) ->
@@ -691,18 +692,18 @@ decode_ready_for_query_message(<<$E>>) -> {ok, #ready_for_query{transaction_stat
 decode_ready_for_query_message(Payload) ->
     {error, {unknown_message, ready_for_query, Payload}}.
 
-decode_row_description_message(<<Count:16/integer, Rest/binary>> = Payload) when Count >= 0 ->
-    case decode_row_description_message0(Count, Rest, []) of
+decode_row_description_message(<<Count:16/integer, Rest/binary>> = Payload, DecodeOpts) when Count >= 0 ->
+    case decode_row_description_message0(Count, Rest, DecodeOpts, []) of
         {ok, Fields} ->
             {ok, #row_description{count = Count, fields = Fields}};
         {error, _} ->
             {error, {unknown_message, row_description, Payload}}
     end;
-decode_row_description_message(Payload) ->
+decode_row_description_message(Payload, _) ->
     {error, {unknown_message, row_description, Payload}}.
 
-decode_row_description_message0(0, <<>>, Acc) -> {ok, lists:reverse(Acc)};
-decode_row_description_message0(Count, Binary, Acc) ->
+decode_row_description_message0(0, <<>>, _DecodeOpts, Acc) -> {ok, lists:reverse(Acc)};
+decode_row_description_message0(Count, Binary, DecodeOpts, Acc) ->
     case decode_string(Binary) of
         {ok, FieldName, <<TableOid:32/integer, AttrNum:16/integer, DataTypeOid:32/integer,
                           DataTypeSize:16/integer, TypeModifier:32/integer, FormatCode:16/integer,
@@ -710,7 +711,7 @@ decode_row_description_message0(Count, Binary, Acc) ->
             case decode_format_code(FormatCode) of
                 {ok, Format} ->
                     Field = #row_description_field{
-                        name = case application:get_env(pgo, column_name_as_atom, false) of
+                        name = case proplists:get_value(column_name_as_atom, DecodeOpts, false) of
                                    true -> binary_to_atom(FieldName, utf8);
                                    _ -> FieldName
                                end,
@@ -720,7 +721,7 @@ decode_row_description_message0(Count, Binary, Acc) ->
                         data_type_size = DataTypeSize,
                         type_modifier = TypeModifier,
                         format = Format},
-                    decode_row_description_message0(Count - 1, Tail, [Field | Acc]);
+                    decode_row_description_message0(Count - 1, Tail, DecodeOpts, [Field | Acc]);
                 {error, _} = Error -> Error
             end;
         {error, _} = Error -> Error;

@@ -3,7 +3,7 @@
 
 -include("pgo_internal.hrl").
 
--export([pgsql_open/3,
+-export([pgsql_open/2,
          extended_query/3,
          extended_query/4,
          extended_query/5,
@@ -14,25 +14,23 @@
 -define(DEFAULT_USER, "postgres").
 -define(DEFAULT_PASSWORD, "").
 
--type row() :: list() | map().
--type fields() :: [#row_description_field{}].
--type decode_fun() :: fun((row(), fields()) -> row()) | undefined.
-
 % driver options.
--type open_option() ::
-        {host, inet:ip_address() | inet:hostname()} % default: ?DEFAULT_HOST
-    |   {port, integer()}                       % default: ?DEFAULT_PORT
-    |   {database, iodata()}                    % default: user
-    |   {user, iodata()}                        % default: ?DEFAULT_USER
-    |   {password, iodata()}                    % default: none
-    |   {fetch_oid_map, boolean()}              % default: true
-    |   {ssl, boolean()}                        % default: false
-    |   {ssl_options, [ssl:ssl_option()]}       % default: []
-    |   {reconnect, boolean()}                  % default: true
-    |   {application_name, atom() | iodata()}   % default: node()
-    |   {timezone, iodata() | undefined}        % default: undefined (not set)
-    |   {async, pid()}                          % subscribe to notifications (default: no)
-    |   proplists:property().                   % undocumented !
+%% -type open_option() ::
+%%         {host, inet:ip_address() | inet:hostname()} % default: ?DEFAULT_HOST
+%%     |   {port, integer()}                       % default: ?DEFAULT_PORT
+%%     |   {database, iodata()}                    % default: user
+%%     |   {user, iodata()}                        % default: ?DEFAULT_USER
+%%     |   {password, iodata()}                    % default: none
+
+%%     |   {ssl, boolean()}                        % default: false
+%%     |   {ssl_options, [ssl:ssl_option()]}       % default: []
+
+%%     |   {application_name, atom() | iodata()}   % default: node()
+%%     |   {timezone, iodata() | undefined}.        % default: undefined (not set)
+%% |   {fetch_oid_map, boolean()}              % default: true
+%% |   {reconnect, boolean()}                  % default: true
+%% |   {async, pid()}                          % subscribe to notifications (default: no)
+%% |   proplists:property().                   % undocumented !
 
 -define(MESSAGE_HEADER_SIZE, 5).
 
@@ -57,12 +55,15 @@
         % expect ready_for_query
     |   {result, any()}.
 
+-spec extended_query(#conn{}, iodata(), list()) -> pgo:result().
 extended_query(Socket, Query, Parameters) ->
     extended_query(Socket, Query, Parameters, [], #{queue_time => undefined}).
 
+-spec extended_query(#conn{}, iodata(), list(), map()) -> pgo:result().
 extended_query(Socket, Query, Parameters, Timings) when is_map(Timings) ->
     extended_query(Socket, Query, Parameters, [], Timings).
 
+-spec extended_query(#conn{}, iodata(), list(), pgo:decode_opts(), map()) -> pgo:result().
 extended_query(Socket=#conn{pool=Pool}, Query, Parameters, QueryOptions, Timings) ->
     Start = erlang:monotonic_time(),
     DecodeFun = proplists:get_value(decode_fun, QueryOptions, undefined),
@@ -84,21 +85,23 @@ close(#conn{socket=Socket}) ->
 %%--------------------------------------------------------------------
 %% @doc Actually open (or re-open) the connection.
 %%
--spec pgsql_open(atom(), [open_option()], list()) -> {ok, pgo_pool:conn()} | {error, any()}.
-pgsql_open(Pool, DBOptions, Options) ->
-    Host = proplists:get_value(host, DBOptions, ?DEFAULT_HOST),
-    Port = proplists:get_value(port, DBOptions, ?DEFAULT_PORT),
-    TraceDefault = proplists:get_value(trace_default, Options, false),
-    DefaultQueryOpts = proplists:get_value(default_query_opts, Options, []),
+-spec pgsql_open(atom(), pgo:pool_config()) -> {ok, pgo_pool:conn()} | {error, any()}.
+pgsql_open(Pool, PoolConfig) ->
+    Host = maps:get(host, PoolConfig, ?DEFAULT_HOST),
+    Port = maps:get(port, PoolConfig, ?DEFAULT_PORT),
+    TraceDefault = maps:get(trace, PoolConfig, false),
+    QueueDefault = maps:get(queue, PoolConfig, true),
+    DefaultDecodeOpts = maps:get(decode_opts, PoolConfig, []),
     case gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, false}]) of
         {ok, Socket} ->
-            case pgsql_setup(Socket, DBOptions) of
+            case pgsql_setup(Socket, PoolConfig) of
                 ok ->
                     {ok, #conn{owner=self(),
                                pool=Pool,
                                socket=Socket,
-                               trace_default=TraceDefault,
-                               default_query_opts=DefaultQueryOpts}};
+                               trace=TraceDefault,
+                               queue=QueueDefault,
+                               decode_opts=DefaultDecodeOpts}};
                 {error, _} = SetupError ->
                     SetupError
             end;
@@ -110,8 +113,10 @@ pgsql_open(Pool, DBOptions, Options) ->
 %% @doc Setup the connection, handling the authentication handshake.
 %%
 pgsql_setup(Socket, Options) ->
-    case proplists:get_bool(ssl, Options) of
+    case maps:get(ssl, Options, undefined) of
         false ->
+            pgsql_setup_startup(Socket, Options);
+        undefined ->
             pgsql_setup_startup(Socket, Options);
         true ->
             pgsql_setup_ssl(Socket, Options)
@@ -124,7 +129,7 @@ pgsql_setup_ssl(Socket, Options) ->
             case gen_tcp:recv(Socket, 1) of
                 {ok, <<$S>>} ->
                     % upgrade socket.
-                    SSLOptions = proplists:get_value(ssl_options, Options, []),
+                    SSLOptions = maps:get(ssl_options, Options, []),
                     case ssl:connect(Socket, [binary, {packet, raw}, {active, false}] ++ SSLOptions) of
                         {ok, SSLSocket} ->
                             pgsql_setup_startup(SSLSocket, Options);
@@ -139,15 +144,15 @@ pgsql_setup_ssl(Socket, Options) ->
 
 pgsql_setup_startup(Socket, Options) ->
     % Send startup packet connection packet.
-    User = proplists:get_value(user, Options, ?DEFAULT_USER),
-    Database = proplists:get_value(database, Options, User),
-    ApplicationName = case proplists:get_value(application_name, Options, node()) of
+    User = maps:get(user, Options, ?DEFAULT_USER),
+    Database = maps:get(database, Options, User),
+    ApplicationName = case maps:get(application_name, Options, node()) of
                           ApplicationNameAtom when is_atom(ApplicationNameAtom) ->
                               atom_to_binary(ApplicationNameAtom, utf8);
                           ApplicationNameString ->
                               ApplicationNameString
                       end,
-    TZOpt = case proplists:get_value(timezone, Options, undefined) of
+    TZOpt = case maps:get(timezone, Options, undefined) of
                 undefined -> [];
                 Timezone -> [{<<"timezone">>, Timezone}]
             end,
@@ -157,7 +162,7 @@ pgsql_setup_startup(Socket, Options) ->
                                              {<<"application_name">>, ApplicationName} | TZOpt]),
     case gen_tcp:send(Socket, StartupMessage) of
         ok ->
-            case receive_message(Socket) of
+            case receive_message(Socket, []) of
                 {ok, #error_response{fields = Fields}} ->
                     {error, {pgo_error, Fields}};
                 {ok, #authentication_ok{}} ->
@@ -184,12 +189,12 @@ pgsql_setup_startup(Socket, Options) ->
     end.
 
 pgsql_setup_authenticate_cleartext_password(Socket, Options) ->
-    Password = proplists:get_value(password, Options, ?DEFAULT_PASSWORD),
+    Password = maps:get(password, Options, ?DEFAULT_PASSWORD),
     pgsql_setup_authenticate_password(Socket, Password, Options).
 
 pgsql_setup_authenticate_md5_password(Socket, Salt, Options) ->
-    User = proplists:get_value(user, Options, ?DEFAULT_USER),
-    Password = proplists:get_value(password, Options, ?DEFAULT_PASSWORD),
+    User = maps:get(user, Options, ?DEFAULT_USER),
+    Password = maps:get(password, Options, ?DEFAULT_PASSWORD),
     % concat('md5', md5(concat(md5(concat(password, username)), random-salt)))
     <<MD51Int:128>> = crypto:hash(md5, [Password, User]),
     MD51Hex = io_lib:format("~32.16.0b", [MD51Int]),
@@ -202,7 +207,7 @@ pgsql_setup_authenticate_password(Socket, Password, Options) ->
     Message = pgo_protocol:encode_password_message(Password),
     case gen_tcp:send(Socket, Message) of
         ok ->
-            case receive_message(Socket) of
+            case receive_message(Socket, []) of
                 {ok, #error_response{fields = Fields}} ->
                     {error, {pgo_error, Fields}};
                 {ok, #authentication_ok{}} ->
@@ -215,7 +220,7 @@ pgsql_setup_authenticate_password(Socket, Password, Options) ->
     end.
 
 pgsql_setup_finish(Socket, Options) ->
-    case receive_message(Socket) of
+    case receive_message(Socket, []) of
         {ok, #parameter_status{name = _Name, value = _Value}} ->
             %% State1 = handle_parameter(Name, Value, sync, Options),
             pgsql_setup_finish(Socket, Options);
@@ -298,10 +303,10 @@ encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, IntegerDateTi
 %% requires_statement_description(_Parameters) ->
 %%     true. %pgo_protocol:bind_requires_statement_description(Parameters).
 
--spec receive_loop(extended_query_loop_state(), decode_fun(), list(), list(), pgo:conn())
-                                       -> pgo:result().
+-spec receive_loop(extended_query_loop_state(), pgo:decode_fun(), list(), list(), pgo:conn())
+                  -> pgo:result().
 receive_loop(LoopState, DecodeFun, Acc0, QueryOptions, Conn=#conn{socket=Socket}) ->
-    case receive_message(Socket) of
+    case receive_message(Socket, QueryOptions) of
         {ok, Message} ->
             receive_loop0(Message, LoopState, DecodeFun, Acc0, QueryOptions, Conn);
         {error, _} = ReceiveError ->
@@ -402,7 +407,7 @@ receive_loop0(Message, _LoopState, _Fun, _Acc0, _QueryOptions, Conn=#conn{socket
     flush_until_ready_for_query(Error, Conn).
 
 flush_until_ready_for_query(Result, Conn=#conn{socket=Socket}) ->
-    case receive_message(Socket) of
+    case receive_message(Socket, []) of
         {ok, #parameter_status{name = _Name, value = _Value}} ->
             flush_until_ready_for_query(Result, Conn);
         {ok, #ready_for_query{}} ->
@@ -417,17 +422,17 @@ flush_until_ready_for_query(Result, Conn=#conn{socket=Socket}) ->
 %% @doc Receive a single packet (in passive mode). Notifications and
 %% notices are broadcast to subscribers.
 %%
-receive_message(Socket) ->
+receive_message(Socket, DecodeOpts) ->
     Result0 = case gen_tcp:recv(Socket, ?MESSAGE_HEADER_SIZE) of
                   {ok, <<Code:8/integer, Size:32/integer>>} ->
                       Payload = Size - 4,
                       case Payload of
                           0 ->
-                              pgo_protocol:decode_message(Code, <<>>);
+                              pgo_protocol:decode_message(Code, <<>>, DecodeOpts);
                           _ ->
                               case gen_tcp:recv(Socket, Payload) of
                                   {ok, Rest} ->
-                                      pgo_protocol:decode_message(Code, Rest);
+                                      pgo_protocol:decode_message(Code, Rest, DecodeOpts);
                                   {error, _} = ErrorRecvPacket ->
                                       ErrorRecvPacket
                               end
@@ -437,9 +442,9 @@ receive_message(Socket) ->
               end,
     case Result0 of
         {ok, #notification_response{} = _Notification} ->
-            receive_message(Socket);
+            receive_message(Socket, DecodeOpts);
         {ok, #notice_response{} = _Notice} ->
-            receive_message(Socket);
+            receive_message(Socket, DecodeOpts);
         _ ->
             Result0
     end.

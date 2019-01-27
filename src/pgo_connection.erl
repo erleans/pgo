@@ -2,7 +2,7 @@
 
 -behaviour(gen_statem).
 
--export([start_link/6,
+-export([start_link/5,
          ping/3,
          stop/3,
          disconnect/4,
@@ -25,16 +25,15 @@
                ref :: reference() | undefined,
                queue :: reference(),
                conn :: #conn{} | undefined,
-               db_settings :: list(),
-               options :: list(),
+               pool_config :: pgo:pool_config(),
                holder :: ets:tid() | undefined,
                broker :: atom(),
                pool :: pid(),
                sup :: pid(),
                backoff :: backoff:backoff()}).
 
-start_link(Queue, PoolPid, PoolName, Sup, DBSettings, Options) ->
-    gen_statem:start_link(?MODULE, {Queue, PoolPid, PoolName, Sup, DBSettings, Options}, []).
+start_link(QueueTid, PoolPid, PoolName, Sup, PoolConfig) ->
+    gen_statem:start_link(?MODULE, {QueueTid, PoolPid, PoolName, Sup, PoolConfig}, []).
 
 pool_name({_Pid, Holder}) ->
     [PoolName] = ets:lookup(Holder, pool_name),
@@ -65,16 +64,15 @@ break(#conn{owner=Pid}, {_Pool, _Ref, _Deadline, Holder}) ->
 break(#conn{owner=Pid}) ->
     gen_statem:cast(Pid, break).
 
-init({Queue, Pool, PoolName, Sup, Settings, Options}) ->
+init({QueueTid, Pool, PoolName, Sup, PoolConfig}) ->
     erlang:process_flag(trap_exit, true),
     B = backoff:init(1000, 10000),
     {ok, disconnected, #data{backoff=B,
                              pool=Pool,
                              broker=PoolName,
-                             queue=Queue,
+                             queue=QueueTid,
                              sup=Sup,
-                             db_settings=Settings,
-                             options=Options},
+                             pool_config=PoolConfig},
      {next_event, internal, connect}}.
 
 callback_mode() ->
@@ -82,15 +80,14 @@ callback_mode() ->
 
 disconnected(EventType, _, Data=#data{broker=Broker,
                                       backoff=B,
-                                      queue=Queue,
+                                      queue=QueueTid,
                                       pool=Pool,
-                                      options=Options,
-                                      db_settings=DBOptions}) when EventType =:= internal
-                                                                  ; EventType =:= timeout
-                                                                  ; EventType =:= state_timeout ->
-    try pgo_handler:pgsql_open(Broker, DBOptions, Options) of
+                                      pool_config=PoolConfig}) when EventType =:= internal
+                                                                    ; EventType =:= timeout
+                                                                    ; EventType =:= state_timeout ->
+    try pgo_handler:pgsql_open(Broker, PoolConfig) of
         {ok, Conn} ->
-            Holder = pgo_pool:update(Pool, Queue, ?MODULE, Conn),
+            Holder = pgo_pool:update(Pool, QueueTid, ?MODULE, Conn),
             {_, B1} = backoff:succeed(B),
             {next_state, enqueued, Data#data{conn=Conn,
                                              holder=Holder,
@@ -98,15 +95,13 @@ disconnected(EventType, _, Data=#data{broker=Broker,
         _Error ->
             {Backoff, B1} = backoff:fail(B),
             {next_state, disconnected, Data#data{broker=Broker,
-                                                 backoff=B1,
-                                                 db_settings=DBOptions},
+                                                 backoff=B1},
              [{state_timeout, Backoff, connect}]}
     catch
         throw:_Reason ->
             {Backoff, B1} = backoff:fail(B),
             {next_state, disconnected, Data#data{broker=Broker,
-                                                 backoff=B1,
-                                                 db_settings=DBOptions},
+                                                 backoff=B1},
              [{state_timeout, Backoff, connect}]}
     end;
 disconnected(EventType, EventContent, Data) ->
@@ -123,10 +118,10 @@ dequeued(EventType, EventContent, Data) ->
 
 handle_event(cast, {ping, Holder}, Data=#data{pool=Pool,
                                               holder=Holder,
-                                              queue=Queue,
+                                              queue=QueueTid,
                                               conn=Conn}) ->
     %% TODO: do ping
-    NewHolder = pgo_pool:update(Pool, Queue, ?MODULE, Conn),
+    NewHolder = pgo_pool:update(Pool, QueueTid, ?MODULE, Conn),
     {keep_state, Data#data{holder=NewHolder}};
 handle_event(cast, {stop, Holder}, Data=#data{holder=Holder,
                                               conn=Conn}) ->

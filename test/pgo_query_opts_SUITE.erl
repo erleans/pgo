@@ -11,8 +11,10 @@ all() ->
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
 
-    {ok, _} = pgo_sup:start_child(default, [{size, 1}, {database, "test"}, {user, "test"}],
-                                  [{default_query_opts, [return_rows_as_maps]}]),
+    {ok, _} = pgo_sup:start_child(default, #{database => "test",
+                                             user => "test",
+                                             pool_size => 1,
+                                             decode_opts => [return_rows_as_maps]}),
 
     Config.
 
@@ -32,4 +34,7 @@ default_rows_as_maps(_Config) ->
                  pgo:query("insert into foo_1 (id, some_text) values (1, 'hello')")),
 
     ?assertMatch(#{command := select,rows := [#{<<"id">> := 1,<<"some_text">> := <<"hello">>}]},
-                 pgo:query("select * from foo_1")).
+                 pgo:query("select * from foo_1")),
+
+    ?assertMatch(#{command := select,rows := [#{id := 1, some_text := <<"hello">>}]},
+                 pgo:query("select * from foo_1", [], #{decode_opts => [column_name_as_atom]})).

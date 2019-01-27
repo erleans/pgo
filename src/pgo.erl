@@ -25,7 +25,9 @@
 -include("pgo_internal.hrl").
 
 -export_type([result/0,
-              error/0]).
+              error/0,
+              pool_config/0,
+              decode_fun/0]).
 
 -type result() :: #{command := atom(),
                     num_rows := integer(),
@@ -35,20 +37,36 @@
 
 -type pool() :: atom().
 
--type pool_opt() :: {size, integer()}
-                  | {host, string()}
-                  | {port, integer()}
-                  | {user, string()}
-                  | {password, string()}
-                  | {database, string()}.
--type pool_config() :: [pool_opt()].
+-type row() :: list() | map().
+-type fields() :: [#row_description_field{}].
+-type decode_fun() :: fun((row(), fields()) -> row()) | undefined.
 
--type query_options() :: return_rows_as_maps | {return_rows_as_maps, boolean()}.
--type pool_options() :: queue | {queue, boolean()}.
+-type decode_option() :: return_rows_as_maps | {return_rows_as_maps, boolean()} |
+                         column_name_as_atom | {column_name_as_atom, boolean()} |
+                         {decode_fun, decode_fun()}.
+
+-type pool_option() :: queue | {queue, boolean()}.
 -type options() :: #{pool => atom(),
                      trace => boolean(),
-                     pool_opts => [pool_options()],
-                     query_opts => [query_options()]}.
+                     queue => boolean(),
+                     decode_opts => [decode_option()]}.
+
+-type pool_config() :: #{host => string(),
+                         port => integer(),
+                         user => string(),
+                         password => string(),
+                         database => string(),
+
+                         %% pool specific settings
+                         pool_size => integer(),
+                         queue_target => integer(),
+                         queue_interval => integer(),
+                         idle_interval => integer(),
+
+                         %% defaults for options used at query time
+                         queue => boolean(),
+                         trace => boolean(),
+                         decode_opts => [decode_option()]}.
 
 %% @doc Starts connection pool as a child of pgo_sup.
 -spec start_pool(pool(), pool_config()) -> {ok, pid()}.
@@ -68,21 +86,21 @@ query(Query, Params) ->
 %% @doc Executes an extended query either on a Pool or a provided connection.
 -spec query(iodata(), list(), options()) -> result().
 query(Query, Params, Options) ->
-    QueryOptions = maps:get(query_opts, Options, []),
+    DecodeOptions = maps:get(decode_opts, Options, []),
     case get(pgo_transaction_connection) of
         undefined ->
             Pool = maps:get(pool, Options, default),
             PoolOptions = maps:get(pool_options, Options, []),
             case checkout(Pool, PoolOptions) of
-                {ok, Ref, Conn=#conn{trace_default=TraceDefault,
-                                     default_query_opts=DefaultQueryOpts}} ->
+                {ok, Ref, Conn=#conn{trace=TraceDefault,
+                                     decode_opts=DefaultDecodeOpts}} ->
                     DoTrace = maps:get(trace, Options, TraceDefault),
                     {SpanCtx, ParentCtx} = maybe_start_span(DoTrace,
                                                             <<"pgo:query/3">>,
                                                             #{attributes => #{<<"query">> => Query}}),
                     try
                         pgo_handler:extended_query(Conn, Query, Params,
-                                                   QueryOptions ++ DefaultQueryOpts,
+                                                   DecodeOptions ++ DefaultDecodeOpts,
                                                    #{queue_time => undefined})
                     after
                         maybe_finish_span(DoTrace, SpanCtx, ParentCtx),
@@ -92,12 +110,12 @@ query(Query, Params, Options) ->
                     E
             end;
         Conn=#conn{pool=Pool,
-                   default_query_opts=DefaultQueryOpts} ->
+                   decode_opts=DefaultDecodeOpts} ->
             %% verify we aren't trying to run a query against another pool from a transaction
             case maps:get(pool, Options, Pool) of
                 P when P =:= Pool ->
                     pgo_handler:extended_query(Conn, Query, Params,
-                                               QueryOptions ++ DefaultQueryOpts,
+                                               DecodeOptions ++ DefaultDecodeOpts,
                                                #{queue_time => undefined});
                 P ->
                     error({in_other_pool_transaction, P})
@@ -121,7 +139,7 @@ transaction(Pool, Fun, Options) ->
         undefined ->
             PoolOptions = maps:get(pool_options, Options, []),
             case checkout(Pool, PoolOptions) of
-                {ok, Ref, Conn=#conn{trace_default=TraceDefault}} ->
+                {ok, Ref, Conn=#conn{trace=TraceDefault}} ->
                     DoTrace = maps:get(trace, Options, TraceDefault),
                     {SpanCtx, ParentCtx} = maybe_start_span(DoTrace,
                                                             <<"pgo:transaction/2">>,
@@ -186,7 +204,7 @@ with_conn(Conn, Fun) ->
 checkout(Pool) ->
     pgo_pool:checkout(Pool, []).
 
--spec checkout(atom(), [pool_options()]) -> {ok, pgo_pool:pool_ref(), pgo_pool:conn()} | {error, any()}.
+-spec checkout(atom(), [pool_option()]) -> {ok, pgo_pool:pool_ref(), pgo_pool:conn()} | {error, any()}.
 checkout(Pool, Options) ->
     pgo_pool:checkout(Pool, Options).
 
