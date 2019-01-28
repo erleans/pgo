@@ -85,7 +85,7 @@ disconnected(EventType, _, Data=#data{broker=Broker,
                                       pool_config=PoolConfig}) when EventType =:= internal
                                                                     ; EventType =:= timeout
                                                                     ; EventType =:= state_timeout ->
-    try pgo_handler:pgsql_open(Broker, PoolConfig) of
+    try pgo_handler:open(Broker, PoolConfig) of
         {ok, Conn} ->
             Holder = pgo_pool:update(Pool, QueueTid, ?MODULE, Conn),
             {_, B1} = backoff:succeed(B),

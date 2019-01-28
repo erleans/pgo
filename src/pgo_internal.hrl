@@ -12,10 +12,10 @@
                decode_opts :: []}).
 
 % Backend messages
--type pgsql_oid() :: pos_integer().
+-type oid() :: pos_integer().
 -type pgsql_procid() :: integer().
 -type pgsql_format() :: text | binary.
--type pgsql_oid_map() :: gb_trees:tree(pgsql_oid(), atom()).
+-type pgsql_oid_map() :: gb_trees:tree(oid(), atom()).
 
 -define(JSONB_VERSION_1, 1).
 
@@ -280,7 +280,7 @@
 }).
 -record(parameter_description, {
     count :: non_neg_integer(),
-    data_types :: [pgsql_oid()]
+    data_types :: [oid()]
 }).
 -record(parameter_status, {
     name :: iodata(),
@@ -293,9 +293,9 @@
 }).
 -record(row_description_field, {
     name :: iodata(),
-    table_oid :: pgsql_oid(),
+    table_oid :: oid(),
     attr_number :: integer(),
-    data_type_oid :: pgsql_oid(),
+    data_type_oid :: oid(),
     data_type_size :: integer(),
     type_modifier :: integer(),
     format :: pgsql_format()

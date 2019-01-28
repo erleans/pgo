@@ -106,7 +106,7 @@ encode_copy_fail(ErrorMessage) ->
 %%--------------------------------------------------------------------
 %% @doc Encode a parse message.
 %%
--spec encode_parse_message(iodata(), iodata(), [pgsql_oid()]) -> iolist().
+-spec encode_parse_message(iodata(), iodata(), [oid()]) -> iolist().
 encode_parse_message(PreparedStatementName, Query, DataTypes) ->
     DataTypesBin = [<<DataTypeOid:32/integer>> || DataTypeOid <- DataTypes],
     DataTypesCount = length(DataTypes),
@@ -118,7 +118,7 @@ encode_parse_message(PreparedStatementName, Query, DataTypes) ->
 %%--------------------------------------------------------------------
 %% @doc Encode a bind message.
 %%
--spec encode_bind_message(iodata(), iodata(), [any()], [pgsql_oid()], atom(), boolean()) -> iolist().
+-spec encode_bind_message(iodata(), iodata(), [any()], [oid()], atom(), boolean()) -> iolist().
 encode_bind_message(PortalName, StatementName, Parameters, ParametersDataTypes, OIDMap, IntegerDateTimes) ->
     ParametersCount = length(Parameters),
     ParametersCountBin = <<ParametersCount:16/integer>>,
@@ -159,7 +159,7 @@ encode_numeric(Float, _Weight, Scale) ->
 %% All parameters are currently encoded in text format except binaries that are
 %% encoded as binaries.
 %%
--spec encode_parameter(any(), pgsql_oid() | undefined, atom(), boolean()) -> iodata().
+-spec encode_parameter(any(), oid() | undefined, atom(), boolean()) -> iodata().
 encode_parameter(null, _Type, _OIDMap, _IntegerDateTimes) ->
     <<-1:32/integer>>;
 encode_parameter({Numeric, Weight, Scale}, ?NUMERICOID, _OIDMap, _IntegerDateTimes) ->

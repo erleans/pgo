@@ -3,7 +3,7 @@
 
 -include("pgo_internal.hrl").
 
--export([pgsql_open/2,
+-export([open/2,
          extended_query/3,
          extended_query/4,
          extended_query/5,
@@ -64,17 +64,16 @@ extended_query(Socket, Query, Parameters, Timings) when is_map(Timings) ->
     extended_query(Socket, Query, Parameters, [], Timings).
 
 -spec extended_query(#conn{}, iodata(), list(), pgo:decode_opts(), map()) -> pgo:result().
-extended_query(Socket=#conn{pool=Pool}, Query, Parameters, QueryOptions, Timings) ->
+extended_query(Socket=#conn{pool=Pool}, Query, Parameters, DecodeOptions, Timings) ->
     Start = erlang:monotonic_time(),
-    DecodeFun = proplists:get_value(decode_fun, QueryOptions, undefined),
-    Result = pgsql_extended_query(Socket, Query, Parameters, QueryOptions, DecodeFun, []),
+    DecodeFun = proplists:get_value(decode_fun, DecodeOptions, undefined),
+    Result = extended_query(Socket, Query, Parameters, DecodeOptions, DecodeFun, []),
     Latency = erlang:monotonic_time() - Start,
     telemetry:execute([pgo, query], Latency, Timings#{pool => Pool,
                                                       query => Query,
                                                       query_time => Latency,
                                                       result => Result}),
     Result.
-
 
 close(undefined) ->
     ok;
@@ -85,8 +84,8 @@ close(#conn{socket=Socket}) ->
 %%--------------------------------------------------------------------
 %% @doc Actually open (or re-open) the connection.
 %%
--spec pgsql_open(atom(), pgo:pool_config()) -> {ok, pgo_pool:conn()} | {error, any()}.
-pgsql_open(Pool, PoolConfig) ->
+-spec open(atom(), pgo:pool_config()) -> {ok, pgo_pool:conn()} | {error, any()}.
+open(Pool, PoolConfig) ->
     Host = maps:get(host, PoolConfig, ?DEFAULT_HOST),
     Port = maps:get(port, PoolConfig, ?DEFAULT_PORT),
     TraceDefault = maps:get(trace, PoolConfig, false),
@@ -94,7 +93,7 @@ pgsql_open(Pool, PoolConfig) ->
     DefaultDecodeOpts = maps:get(decode_opts, PoolConfig, []),
     case gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, false}]) of
         {ok, Socket} ->
-            case pgsql_setup(Socket, PoolConfig) of
+            case setup(Socket, PoolConfig) of
                 ok ->
                     {ok, #conn{owner=self(),
                                pool=Pool,
@@ -112,17 +111,17 @@ pgsql_open(Pool, PoolConfig) ->
 %%--------------------------------------------------------------------
 %% @doc Setup the connection, handling the authentication handshake.
 %%
-pgsql_setup(Socket, Options) ->
+setup(Socket, Options) ->
     case maps:get(ssl, Options, undefined) of
         false ->
-            pgsql_setup_startup(Socket, Options);
+            setup_startup(Socket, Options);
         undefined ->
-            pgsql_setup_startup(Socket, Options);
+            setup_startup(Socket, Options);
         true ->
-            pgsql_setup_ssl(Socket, Options)
+            setup_ssl(Socket, Options)
     end.
 
-pgsql_setup_ssl(Socket, Options) ->
+setup_ssl(Socket, Options) ->
     SSLRequestMessage = pgo_protocol:encode_ssl_request_message(),
     case gen_tcp:send(Socket, SSLRequestMessage) of
         ok ->
@@ -130,19 +129,21 @@ pgsql_setup_ssl(Socket, Options) ->
                 {ok, <<$S>>} ->
                     % upgrade socket.
                     SSLOptions = maps:get(ssl_options, Options, []),
-                    case ssl:connect(Socket, [binary, {packet, raw}, {active, false}] ++ SSLOptions) of
+                    case ssl:connect(Socket, [binary, {packet, raw}, {active, false} | SSLOptions]) of
                         {ok, SSLSocket} ->
-                            pgsql_setup_startup(SSLSocket, Options);
-                        {error, _} = SSLConnectErr -> SSLConnectErr
+                            setup_startup(SSLSocket, Options);
+                        {error, _} = SSLConnectErr ->
+                            SSLConnectErr
                     end;
                 {ok, <<$N>>} ->
                     % server is unwilling
                     {error, ssl_refused}
             end;
-        {error, _} = SendSSLRequestError -> SendSSLRequestError
+        {error, _} = SendSSLRequestError ->
+            SendSSLRequestError
     end.
 
-pgsql_setup_startup(Socket, Options) ->
+setup_startup(Socket, Options) ->
     % Send startup packet connection packet.
     User = maps:get(user, Options, ?DEFAULT_USER),
     Database = maps:get(database, Options, User),
@@ -166,13 +167,13 @@ pgsql_setup_startup(Socket, Options) ->
                 {ok, #error_response{fields = Fields}} ->
                     {error, {pgo_error, Fields}};
                 {ok, #authentication_ok{}} ->
-                    pgsql_setup_finish(Socket, Options);
+                    setup_finish(Socket, Options);
                 {ok, #authentication_kerberos_v5{}} ->
                     {error, {unimplemented, authentication_kerberos_v5}};
                 {ok, #authentication_cleartext_password{}} ->
-                    pgsql_setup_authenticate_cleartext_password(Socket, Options);
+                    setup_authenticate_cleartext_password(Socket, Options);
                 {ok, #authentication_md5_password{salt = Salt}} ->
-                    pgsql_setup_authenticate_md5_password(Socket, Salt, Options);
+                    setup_authenticate_md5_password(Socket, Salt, Options);
                 {ok, #authentication_scm_credential{}} ->
                     {error, {unimplemented, authentication_scm}};
                 {ok, #authentication_gss{}} ->
@@ -188,11 +189,11 @@ pgsql_setup_startup(Socket, Options) ->
         {error, _} = SendError -> SendError
     end.
 
-pgsql_setup_authenticate_cleartext_password(Socket, Options) ->
+setup_authenticate_cleartext_password(Socket, Options) ->
     Password = maps:get(password, Options, ?DEFAULT_PASSWORD),
-    pgsql_setup_authenticate_password(Socket, Password, Options).
+    setup_authenticate_password(Socket, Password, Options).
 
-pgsql_setup_authenticate_md5_password(Socket, Salt, Options) ->
+setup_authenticate_md5_password(Socket, Salt, Options) ->
     User = maps:get(user, Options, ?DEFAULT_USER),
     Password = maps:get(password, Options, ?DEFAULT_PASSWORD),
     % concat('md5', md5(concat(md5(concat(password, username)), random-salt)))
@@ -201,9 +202,9 @@ pgsql_setup_authenticate_md5_password(Socket, Salt, Options) ->
     <<MD52Int:128>> = crypto:hash(md5, [MD51Hex, Salt]),
     MD52Hex = io_lib:format("~32.16.0b", [MD52Int]),
     MD5ChallengeResponse = ["md5", MD52Hex],
-    pgsql_setup_authenticate_password(Socket, MD5ChallengeResponse, Options).
+    setup_authenticate_password(Socket, MD5ChallengeResponse, Options).
 
-pgsql_setup_authenticate_password(Socket, Password, Options) ->
+setup_authenticate_password(Socket, Password, Options) ->
     Message = pgo_protocol:encode_password_message(Password),
     case gen_tcp:send(Socket, Message) of
         ok ->
@@ -211,7 +212,7 @@ pgsql_setup_authenticate_password(Socket, Password, Options) ->
                 {ok, #error_response{fields = Fields}} ->
                     {error, {pgo_error, Fields}};
                 {ok, #authentication_ok{}} ->
-                    pgsql_setup_finish(Socket, Options);
+                    setup_finish(Socket, Options);
                 {ok, UnexpectedMessage} ->
                     {error, {unexpected_message, UnexpectedMessage}};
                 {error, _} = ReceiveError -> ReceiveError
@@ -219,13 +220,13 @@ pgsql_setup_authenticate_password(Socket, Password, Options) ->
         {error, _} = SendError -> SendError
     end.
 
-pgsql_setup_finish(Socket, Options) ->
+setup_finish(Socket, Options) ->
     case receive_message(Socket, []) of
         {ok, #parameter_status{name = _Name, value = _Value}} ->
             %% State1 = handle_parameter(Name, Value, sync, Options),
-            pgsql_setup_finish(Socket, Options);
+            setup_finish(Socket, Options);
         {ok, #backend_key_data{procid = _ProcID, secret = _Secret}} ->
-            pgsql_setup_finish(Socket, Options);
+            setup_finish(Socket, Options);
         {ok, #ready_for_query{}} ->
             ok;
         {ok, #error_response{fields = Fields}} ->
@@ -243,11 +244,11 @@ pgsql_setup_finish(Socket, Options) ->
 % fail but set only applies to the transaction anyway.
 %% -spec set_succeeded_or_within_failed_transaction({set, []} | {error, pgo_error:pgo_error()}) -> boolean().
 %% set_succeeded_or_within_failed_transaction({set, []}) -> true;
-%% set_succeeded_or_within_failed_transaction({error, {pgsql_error, _} = Error}) ->
-%%     pgsql_error:is_in_failed_sql_transaction(Error).
+%% set_succeeded_or_within_failed_transaction({error, {error, _} = Error}) ->
+%%     error:is_in_failed_sql_transaction(Error).
 
-pgsql_extended_query(Conn=#conn{socket=Socket,
-                                pool=Pool}, Query, Parameters, QueryOptions, PerRowFun, Acc0) ->
+extended_query(Conn=#conn{socket=Socket,
+                          pool=Pool}, Query, Parameters, DecodeOptions, PerRowFun, Acc0) ->
     put(query, Query),
     IntegerDateTimes = true,
     ParseMessage = pgo_protocol:encode_parse_message("", Query, []),
@@ -272,10 +273,10 @@ pgsql_extended_query(Conn=#conn{socket=Socket,
             case gen_tcp:send(Socket, SinglePacket) of
                 ok ->
                     receive_loop(LoopState,
-                                                      PerRowFun,
-                                                      Acc0,
-                                                      QueryOptions,
-                                                      Conn);
+                                 PerRowFun,
+                                 Acc0,
+                                 DecodeOptions,
+                                 Conn);
                 {error, _} = SendSinglePacketError ->
                     SendSinglePacketError
             end;
@@ -283,7 +284,7 @@ pgsql_extended_query(Conn=#conn{socket=Socket,
             PacketT
     end.
 
--spec encode_bind_describe_execute([any()], [pgsql_oid()], atom(), boolean())
+-spec encode_bind_describe_execute([any()], [oid()], atom(), boolean())
                                   -> {ok, iodata()} | {error, any()}.
 encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, IntegerDateTimes) ->
     DescribeMessage = pgo_protocol:encode_describe_message(portal, ""),
@@ -305,35 +306,35 @@ encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, IntegerDateTi
 
 -spec receive_loop(extended_query_loop_state(), pgo:decode_fun(), list(), list(), pgo:conn())
                   -> pgo:result().
-receive_loop(LoopState, DecodeFun, Acc0, QueryOptions, Conn=#conn{socket=Socket}) ->
-    case receive_message(Socket, QueryOptions) of
+receive_loop(LoopState, DecodeFun, Acc0, DecodeOptions, Conn=#conn{socket=Socket}) ->
+    case receive_message(Socket, DecodeOptions) of
         {ok, Message} ->
-            receive_loop0(Message, LoopState, DecodeFun, Acc0, QueryOptions, Conn);
+            receive_loop0(Message, LoopState, DecodeFun, Acc0, DecodeOptions, Conn);
         {error, _} = ReceiveError ->
             ReceiveError
     end.
 
-receive_loop0(#parameter_status{name=_Name, value=_Value}, LoopState, DecodeFun, Acc0, QueryOptions, Conn) ->
+receive_loop0(#parameter_status{name=_Name, value=_Value}, LoopState, DecodeFun, Acc0, DecodeOptions, Conn) ->
     %% State1 = handle_parameter(Name, Value, Conn),
-    receive_loop(LoopState, DecodeFun, Acc0, QueryOptions, Conn);
-receive_loop0(#parse_complete{}, parse_complete, DecodeFun, Acc0, QueryOptions, Conn) ->
-    receive_loop(bind_complete, DecodeFun, Acc0, QueryOptions, Conn);
+    receive_loop(LoopState, DecodeFun, Acc0, DecodeOptions, Conn);
+receive_loop0(#parse_complete{}, parse_complete, DecodeFun, Acc0, DecodeOptions, Conn) ->
+    receive_loop(bind_complete, DecodeFun, Acc0, DecodeOptions, Conn);
 
 %% Path where we ask the backend about what it expects.
 %% We ignore row descriptions sent before bind as the format codes are null.
-receive_loop0(#parse_complete{}, {parse_complete_with_params, Parameters}, DecodeFun, Acc0, QueryOptions, Conn) ->
-    receive_loop({parameter_description_with_params, Parameters}, DecodeFun, Acc0, QueryOptions, Conn);
+receive_loop0(#parse_complete{}, {parse_complete_with_params, Parameters}, DecodeFun, Acc0, DecodeOptions, Conn) ->
+    receive_loop({parameter_description_with_params, Parameters}, DecodeFun, Acc0, DecodeOptions, Conn);
 receive_loop0(#parameter_description{data_types=ParameterDataTypes},
               {parameter_description_with_params, Parameters}, DecodeFun,
-              Acc0, QueryOptions, Conn=#conn{socket=Socket, pool=Pool}) ->
+              Acc0, DecodeOptions, Conn=#conn{socket=Socket, pool=Pool}) ->
     pgo_query_cache:insert(Pool, get(query), ParameterDataTypes),
-    oob_update_oid_map_if_required(Conn, ParameterDataTypes, QueryOptions),
+    oob_update_oid_map_if_required(Conn, ParameterDataTypes, DecodeOptions),
     PacketT = encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, true),
     case PacketT of
         {ok, SinglePacket} ->
             case gen_tcp:send(Socket, SinglePacket) of
                 ok ->
-                    receive_loop(pre_bind_row_description, DecodeFun, Acc0, QueryOptions, Conn);
+                    receive_loop(pre_bind_row_description, DecodeFun, Acc0, DecodeOptions, Conn);
                 {error, _} = SendError ->
                     SendError
             end;
@@ -343,43 +344,43 @@ receive_loop0(#parameter_description{data_types=ParameterDataTypes},
                 {error, _} = SendSyncPacketError -> SendSyncPacketError
             end
     end;
-receive_loop0(#row_description{}, pre_bind_row_description, DecodeFun, Acc0, QueryOptions, Conn) ->
-    receive_loop(bind_complete, DecodeFun, Acc0, QueryOptions, Conn);
-receive_loop0(#no_data{}, pre_bind_row_description, DecodeFun, Acc0, QueryOptions, Conn) ->
-    receive_loop(bind_complete, DecodeFun, Acc0, QueryOptions, Conn);
+receive_loop0(#row_description{}, pre_bind_row_description, DecodeFun, Acc0, DecodeOptions, Conn) ->
+    receive_loop(bind_complete, DecodeFun, Acc0, DecodeOptions, Conn);
+receive_loop0(#no_data{}, pre_bind_row_description, DecodeFun, Acc0, DecodeOptions, Conn) ->
+    receive_loop(bind_complete, DecodeFun, Acc0, DecodeOptions, Conn);
 
 %% Common paths after bind.
-receive_loop0(#bind_complete{}, bind_complete, DecodeFun, Acc0, QueryOptions, Conn) ->
-    receive_loop(row_description, DecodeFun, Acc0, QueryOptions, Conn);
-receive_loop0(#no_data{}, row_description, DecodeFun, Acc0, QueryOptions, Conn) ->
-    receive_loop(no_data, DecodeFun, Acc0, QueryOptions, Conn);
-receive_loop0(#row_description{fields = Fields}, row_description, DecodeFun, Acc0, QueryOptions, Conn) ->
-    oob_update_oid_map_from_fields_if_required(Conn, Fields, QueryOptions),
-    receive_loop({rows, Fields}, DecodeFun, Acc0, QueryOptions, Conn);
+receive_loop0(#bind_complete{}, bind_complete, DecodeFun, Acc0, DecodeOptions, Conn) ->
+    receive_loop(row_description, DecodeFun, Acc0, DecodeOptions, Conn);
+receive_loop0(#no_data{}, row_description, DecodeFun, Acc0, DecodeOptions, Conn) ->
+    receive_loop(no_data, DecodeFun, Acc0, DecodeOptions, Conn);
+receive_loop0(#row_description{fields = Fields}, row_description, DecodeFun, Acc0, DecodeOptions, Conn) ->
+    oob_update_oid_map_from_fields_if_required(Conn, Fields, DecodeOptions),
+    receive_loop({rows, Fields}, DecodeFun, Acc0, DecodeOptions, Conn);
 receive_loop0(#data_row{values = Values}, {rows, Fields} = LoopState, undefined=DecodeFun,
-              Acc0, QueryOptions, Conn=#conn{pool=Pool}) ->
-    DecodedRow = pgo_protocol:decode_row(Fields, Values, Pool, QueryOptions),
-    receive_loop(LoopState, DecodeFun, [DecodedRow | Acc0], QueryOptions, Conn);
-receive_loop0(#data_row{values = Values}, {rows, Fields} = LoopState, DecodeFun, Acc0, QueryOptions, Conn=#conn{pool=Pool}) ->
-    DecodedRow = pgo_protocol:decode_row(Fields, Values, Pool, QueryOptions),
-    receive_loop(LoopState, DecodeFun, [DecodeFun(DecodedRow, Fields) | Acc0], QueryOptions, Conn);
-receive_loop0(#command_complete{command_tag = Tag}, _LoopState, DecodeFun, Acc0, QueryOptions, Conn) ->
+              Acc0, DecodeOptions, Conn=#conn{pool=Pool}) ->
+    DecodedRow = pgo_protocol:decode_row(Fields, Values, Pool, DecodeOptions),
+    receive_loop(LoopState, DecodeFun, [DecodedRow | Acc0], DecodeOptions, Conn);
+receive_loop0(#data_row{values = Values}, {rows, Fields} = LoopState, DecodeFun, Acc0, DecodeOptions, Conn=#conn{pool=Pool}) ->
+    DecodedRow = pgo_protocol:decode_row(Fields, Values, Pool, DecodeOptions),
+    receive_loop(LoopState, DecodeFun, [DecodeFun(DecodedRow, Fields) | Acc0], DecodeOptions, Conn);
+receive_loop0(#command_complete{command_tag = Tag}, _LoopState, DecodeFun, Acc0, DecodeOptions, Conn) ->
     {Command, NumRows} = decode_tag(Tag),
     receive_loop({result, #{command => Command,
                             num_rows => NumRows,
-                            rows => lists:reverse(Acc0)}}, DecodeFun, Acc0, QueryOptions, Conn);
-%% receive_loop0(#portal_suspended{}, LoopState, DecodeFun, Acc0, QueryOptions, Conn={_,S}) ->
+                            rows => lists:reverse(Acc0)}}, DecodeFun, Acc0, DecodeOptions, Conn);
+%% receive_loop0(#portal_suspended{}, LoopState, DecodeFun, Acc0, DecodeOptions, Conn={_,S}) ->
 %%     ExecuteMessage = pgo_protocol:encode_execute_message("", 0),
 %%     FlushMessage = pgo_protocol:encode_flush_message(),
 %%     SinglePacket = [ExecuteMessage, FlushMessage],
 %%     case gen_tcp:send(S, SinglePacket) of
-%%         ok -> receive_loop(LoopState, DecodeFun, Acc0, QueryOptions, Conn);
+%%         ok -> receive_loop(LoopState, DecodeFun, Acc0, DecodeOptions, Conn);
 %%         {error, _} = SendSinglePacketError ->
 %%             SendSinglePacketError
 %%     end;
-receive_loop0(#ready_for_query{}, {result, Result}, _Fun, _Acc0, _QueryOptions, __Socket) ->
+receive_loop0(#ready_for_query{}, {result, Result}, _Fun, _Acc0, _DecodeOptions, __Socket) ->
     Result;
-receive_loop0(#error_response{fields = Fields}, LoopState, _Fun, _Acc0, _QueryOptions, Conn=#conn{socket=Socket}) ->
+receive_loop0(#error_response{fields = Fields}, LoopState, _Fun, _Acc0, _DecodeOptions, Conn=#conn{socket=Socket}) ->
     Error = {error, {pgsql_error, Fields}},
     % We already sent a Sync except when we sent a Flush :-)
     % - when we asked for the statement description
@@ -398,10 +399,10 @@ receive_loop0(#error_response{fields = Fields}, LoopState, _Fun, _Acc0, _QueryOp
         false ->
             flush_until_ready_for_query(Error, Conn)
     end;
-receive_loop0(#ready_for_query{} = Message, _LoopState, _Fun, _Acc0, _QueryOptions, _Conn) ->
+receive_loop0(#ready_for_query{} = Message, _LoopState, _Fun, _Acc0, _DecodeOptions, _Conn) ->
     Result = {error, {unexpected_message, Message}},
     Result;
-receive_loop0(Message, _LoopState, _Fun, _Acc0, _QueryOptions, Conn=#conn{socket=Socket}) ->
+receive_loop0(Message, _LoopState, _Fun, _Acc0, _DecodeOptions, Conn=#conn{socket=Socket}) ->
     gen_tcp:send(Socket, pgo_protocol:encode_sync_message()),
     Error = {error, {unexpected_message, Message}},
     flush_until_ready_for_query(Error, Conn).
@@ -499,17 +500,17 @@ decode_object(Object) ->
 %%--------------------------------------------------------------------
 %% @doc Update the OID Map out of band, opening a new connection.
 %%
-oob_update_oid_map_from_fields_if_required(Conn, Fields, QueryOptions) ->
-    case proplists:get_bool(no_reload_types, QueryOptions) of
+oob_update_oid_map_from_fields_if_required(Conn, Fields, DecodeOptions) ->
+    case proplists:get_bool(no_reload_types, DecodeOptions) of
         false ->
             OIDs = [OID || #row_description_field{data_type_oid = OID} <- Fields],
-            oob_update_oid_map_if_required(Conn, OIDs, QueryOptions);
+            oob_update_oid_map_if_required(Conn, OIDs, DecodeOptions);
         true ->
             ok
     end.
 
-oob_update_oid_map_if_required(Conn=#conn{pool=Pool}, OIDs, QueryOptions) ->
-    case not proplists:get_bool(no_reload_types, QueryOptions)
+oob_update_oid_map_if_required(Conn=#conn{pool=Pool}, OIDs, DecodeOptions) ->
+    case not proplists:get_bool(no_reload_types, DecodeOptions)
         andalso lists:any(fun(OID) ->
                                   not ets:member(Pool, OID)
                           end, OIDs) of
