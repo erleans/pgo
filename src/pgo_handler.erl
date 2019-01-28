@@ -147,20 +147,13 @@ setup_startup(Socket, Options) ->
     % Send startup packet connection packet.
     User = maps:get(user, Options, ?DEFAULT_USER),
     Database = maps:get(database, Options, User),
-    ApplicationName = case maps:get(application_name, Options, node()) of
-                          ApplicationNameAtom when is_atom(ApplicationNameAtom) ->
-                              atom_to_binary(ApplicationNameAtom, utf8);
-                          ApplicationNameString ->
-                              ApplicationNameString
-                      end,
-    TZOpt = case maps:get(timezone, Options, undefined) of
-                undefined -> [];
-                Timezone -> [{<<"timezone">>, Timezone}]
-            end,
+    ConnectionParams = maps:get(connection_parameters, Options, []),
+    ConnectionParams1 = lists:keymerge(1, ConnectionParams,
+                                       [{<<"application_name">>, atom_to_binary(node(), utf8)}]),
     StartupMessage =
         pgo_protocol:encode_startup_message([{<<"user">>, User},
-                                             {<<"database">>, Database},
-                                             {<<"application_name">>, ApplicationName} | TZOpt]),
+                                             {<<"database">>, Database}
+                                             | ConnectionParams1]),
     case gen_tcp:send(Socket, StartupMessage) of
         ok ->
             case receive_message(Socket, []) of

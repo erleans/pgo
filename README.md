@@ -107,6 +107,7 @@ decode_option() :: return_rows_as_maps | {return_rows_as_maps, boolean()} |
 * `database`: Name of database to use.
 * `ssl` (default: `false`): Whether to use SSL or not.
 * `ssl_options`: List of SSL options to use if `ssl` is `true`. See the [Erlang SSL connect](http://erlang.org/doc/man/ssl.html#connect-2) options.
+* `connection_parameters` (default: `[]`): List of 2-tuples, where key and value must be binary strings. You can include any Postgres connection parameter here, such as `{<<"application_name">>, <<"myappname">>}` and `{<<"timezone">>, <<"GMT">>}`.
 
 ### Pool Settings
 
