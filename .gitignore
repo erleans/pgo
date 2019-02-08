@@ -1,5 +1,6 @@
 .rebar3
 doc
+!doc/overview.edoc
 _*
 .eunit
 *.o

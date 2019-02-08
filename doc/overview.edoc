@@ -1,0 +1,146 @@
+@title PGo
+@doc
+
+== Why ==
+
+<ul>
+<li> No message passing. Clients checkout the socket and use it directly.</li>
+<li> Binary protocol with input oids cached.</li>
+<li> Simple and direct. Tries to limit runtime options as much as possible.</li>
+<li> Instrumented with [https://github.com/beam-telemetry/telemetry Telemetry] and [https://github.com/census-instrumentation/opencensus-erlang OpenCensus]</li>
+<li> Mix apps currently too hard to use in a Rebar3 project.</li>
+</ul>
+
+== Requirements ==
+
+Erlang/OTP 20 and above.
+
+== Use ==
+
+Pools defined in the `pgo' application's environment will be started on boot. You can also add pools dynamically with `pgo:start_pool/3'.
+
+To try `pgo' simply modify `config/example.config' by replacing the `host', `database', `user' and `password' values for the database you wish to connect to:
+
+```
+[
+  {pgo, [{pools, [{default, #{pool_size => 10,
+                              host => "127.0.0.1",
+                              database => "test",
+                              user => "test"}}]}]}
+].
+'''
+
+`default' is the name of the pool, `size' is the number of connections to create for the pool. Or you can start the pool through `pgo:start_pool/2':
+
+```
+> pgo:start_pool(default, #{pool_size => 5, host => "127.0.0.1", database => "test", user => "test"}).
+'''
+
+Then start a shell with `rebar3 shell', it will boot the applications which will start the pool automatically if it is configured through `sys.config'.
+
+```
+> pgo:query("select 1").
+#{command => select, num_rows => 1, rows => [{1}]}
+> pgo:transaction(fun() ->
+>     pgo:query("INSERT INTO my_table(name) VALUES('Name 1')"),
+>     pgo:query("INSERT INTO my_table(name) VALUES('Name 2')")
+> end).
+#{command => insert,num_rows => 1,rows => []}
+'''
+
+== Options ==
+
+Pool configuration includes the Postgres connection information, pool configuration like size and defaults for options used at query time.
+
+```
+#{host => string(),
+  port => integer(),
+  user => string(),
+  password => string(),
+  database => string(),
+
+  %% pool specific settings
+  pool_size => integer(),
+  queue_target => integer(),
+  queue_interval => integer(),
+  idle_interval => integer(),
+
+  %% defaults for options used at query time
+  queue => boolean(),
+  trace => boolean(),
+  decode_opts => [decode_option()]}
+'''
+
+The query time options can also be set through options passed to `pgo:query/3`:
+
+```
+decode_fun() :: fun((row(), fields()) -> row()) | undefined.
+
+decode_option() :: return_rows_as_maps | {return_rows_as_maps, boolean()} |
+                   column_name_as_atom | {column_name_as_atom, boolean()} |
+                   {decode_fun, decode_fun()}.
+
+#{pool => atom(),
+  trace => boolean(),
+  queue => boolean(),
+  decode_opts => [decode_option()]}
+'''
+
+=== Query Options ===
+
+<ul>
+<li> `pool' (default: `default'): Name of the pool to use for checking out a connection to the database.</li>
+<li> `return_rows_as_maps' (default: `false'): When `true' each row is returned as a map of column name to value instead of a list of values.</li>
+<li> `column_name_as_atom' (default: `false'): If `true' converts each column name in the result to an atom.</li>
+<li> `decode_fun' (default: `undefined'): Optional function for performing transformations on each row in a result. It must be a 2-arity function returning a list or map for the row and takes the row (as a list or map) and a list of `#row_description_field{}' records.</li>
+<li> `queue' (default: `true'): Whether to wait for a connection from the pool if none are available.</li>
+<li>`trace' (default: `false'): `pgo' is instrumented with [https://opencensus.io/ OpenCensus] and when this option is `true' a span will be created (if sampled).</li>
+</ul>
+
+=== Database Settings ===
+
+<ul>
+<li> `host' (default: `127.0.0.1'): Database server hostname.</li>
+<li> `port' (default: 5432): Port the server is listening on.</li>
+<li> `user': Username to connect to database as.</li>
+<li> `password': Password for the user.</li>
+<li> `database': Name of database to use.</li>
+<li> `ssl' (default: `false'): Whether to use SSL or not.</li>
+<li> `ssl_options': List of SSL options to use if `ssl' is `true'. See the [http://erlang.org/doc/man/ssl.html#connect-2 Erlang SSL connect] options.</li>
+<li> `connection_parameters' (default: `[]'): List of 2-tuples, where key and value must be binary strings. You can include any Postgres connection parameter here, such as `{<<"application_name">>, <<"myappname">>}' and `{<<"timezone">>, <<"GMT">>}'.</li>
+</ul>
+
+=== Pool Settings ===
+
+<ul>
+<li> `pool_size' (default: 1): Number of connections to keep open with the database</li>
+<li> `queue_target' (default: 50) and `queue_interval' (default: 1000): Checking out connections is handled through a queue. If it takes longer than `queue_target' to get out of the queue for longer than `queue_interval' then the `queue_target' will be doubled and checkouts will start to be dropped if that target is surpassed.</li>
+<li> `idle_interval' (default: 1000): The database is pinged every `idle_interval' when the connection is idle.</li>
+</ul>
+
+== Telemetry and Tracing ==
+
+A [https://github.com/beam-telemetry/telemetry Telemetry] event `[pgo, query]' can be attached to for receiving the time a query takes as well as other metadata for each query.
+
+[https://opencensus.io/ OpenCensus] spans can be enabled for queries and transactions by either setting the `trace_default' to `true' for the pool:
+
+```
+> pgo:start_pool(default, #{host => "127.0.0.1",
+                            database => "test",
+                            user => "test",
+                            pool_size => 5}]).
+'''
+
+Or by passing `#{trace => true}' in the options for a query or transaction:
+
+```
+> pgo:query("select 1", [], #{trace => true}).
+#{command => select, num_rows => 1, rows => [{1}]}
+> pgo:transaction(fun() ->
+>     pgo:query("INSERT INTO my_table(name) VALUES('Name 1')"),
+>     pgo:query("INSERT INTO my_table(name) VALUES('Name 2')")
+> end, #{trace => true}).
+#{command => insert,num_rows => 1,rows => []}
+'''
+
+Note that since this is optional the `opencensus' application is not included as a dependency of `pgo'. So it must be included as a `rebar3' dependency and runtime dependency (listed in your application's `.app.src' `applications' or the list of applications for `relx' to include in a release).
