@@ -30,10 +30,18 @@ To try `pgo' simply modify `config/example.config' by replacing the `host', `dat
 ].
 '''
 
-`default' is the name of the pool, `size' is the number of connections to create for the pool. Or you can start the pool through `pgo:start_pool/2':
+`default' is the name of the pool, `size' is the number of connections to create for the pool. Or you can start the pool through `pgo:start_pool/2' which creates it as a child of `pgo' simple one for one:
 
 ```
 > pgo:start_pool(default, #{pool_size => 5, host => "127.0.0.1", database => "test", user => "test"}).
+'''
+
+Or start a pool as a child of your application's supervisor:
+
+```
+ChildSpec = #{id => pgo_pool,
+              start => {pgo_pool, start_link, [Name, PoolConfig]},
+              shutdown => 1000},
 '''
 
 Then start a shell with `rebar3 shell', it will boot the applications which will start the pool automatically if it is configured through `sys.config'.
