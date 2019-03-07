@@ -11,7 +11,7 @@
 
 all() ->
     [select, insert_update, text_types, rows_as_maps,
-     json_jsonb, types, validate_telemetry].
+     json_jsonb, types, validate_telemetry, numerics].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
@@ -27,6 +27,7 @@ end_per_suite(_Config) ->
     pgo:query("drop table tmp_b"),
     pgo:query("drop table foo"),
     pgo:query("drop table types"),
+    pgo:query("drop table numeric_tmp"),
 
     application:stop(pgo),
     ok.
@@ -204,3 +205,34 @@ types(_Config) ->
     #{command := select, rows := [Row17, Row18]} = R3,
     ?assertMatch({?TXT_UUID}, Row17),
     ?assertMatch({?TXT_UUID}, Row18).
+
+numerics(_Config) ->
+
+     BasicQuery = "select $1::numeric",
+    ?assertMatch(#{rows := [{1}]}, pgo:query(BasicQuery, [1])),
+    ?assertMatch(#{rows := [{-1}]}, pgo:query(BasicQuery, [-1])),
+    ?assertMatch(#{rows := [{1.1}]}, pgo:query(BasicQuery, [1.1])),
+    ?assertMatch(#{rows := [{-1.1}]}, pgo:query(BasicQuery, [-1.1])),
+    ?assertMatch(#{rows := [{1.12345}]}, pgo:query(BasicQuery, [1.12345])),
+    ?assertMatch(#{rows := [{1.0e-9}]}, pgo:query(BasicQuery, [0.000000001])),
+    ?assertMatch(#{rows := [{-1.0e-9}]}, pgo:query(BasicQuery, [-0.000000001])),
+    ?assertMatch(#{rows := [{1.0e-10}]}, pgo:query(BasicQuery, [0.0000000001])),
+    ?assertMatch(#{rows := [{-1.0e-10}]}, pgo:query(BasicQuery, [-0.0000000001])),
+    ?assertMatch(#{rows := [{1.0e-11}]}, pgo:query(BasicQuery, [0.00000000001])),
+    ?assertMatch(#{rows := [{-1.0e-11}]}, pgo:query(BasicQuery, [-0.00000000001])),
+    ?assertMatch(#{rows := [{1.0e-32}]}, pgo:query(BasicQuery, [1.0e-32])),
+
+
+     #{command := create} = pgo:query("create table numeric_tmp (id integer primary key, a_int integer, a_num numeric,
+                                      b_num numeric(5,3))"),
+    ?assertMatch(#{command := insert}, pgo:query("insert into numeric_tmp (id, a_int, a_num) values ($1, $2, $3)", [1,1,
+                                                                                                                    0.010000001])),
+
+    ?assertMatch(#{command := insert}, pgo:query("insert into numeric_tmp (id, a_int, a_num) values ($1, $2, $3)", [2,1,
+                                                                                                                    0.00000000000000000000000000000001])),
+    ?assertMatch(#{rows := [{1.0}]}, pgo:query("select a_int::numeric(2, 1) from numeric_tmp where id = 1", [])),
+    ?assertMatch(#{rows := [{1.00}]}, pgo:query("select a_int::numeric(3, 1) from numeric_tmp where id = 1", [])),
+    ?assertMatch(#{rows := [{0.01}]}, pgo:query("select a_num::numeric(10, 3) from numeric_tmp where id = 1", [])),
+    ?assertMatch(#{rows := [{0.01}]}, pgo:query("select a_num::numeric(10, 3) from numeric_tmp where id = 1", [])),
+
+    ?assertMatch(#{rows := [{1.0e-32}]}, pgo:query("select a_num::numeric from numeric_tmp where id = 2", [])).
