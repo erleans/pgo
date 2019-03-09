@@ -12,7 +12,6 @@
   {env,[]},
   {modules, []},
 
-  {maintainers, ["Tristan Sloughter"]},
   {licenses, ["Apache 2"]},
   {links, [{"Github", "https://github.com/erleans/pgo"}]}
  ]}.
