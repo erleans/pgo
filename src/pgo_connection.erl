@@ -120,7 +120,7 @@ handle_event(cast, {ping, Holder}, Data=#data{pool=Pool,
                                               holder=Holder,
                                               queue=QueueTid,
                                               conn=Conn}) ->
-    %% TODO: do ping
+    ok = pgo_handler:ping(Conn),
     NewHolder = pgo_pool:update(Pool, QueueTid, ?MODULE, Conn),
     {keep_state, Data#data{holder=NewHolder}};
 handle_event(cast, {stop, Holder}, Data=#data{holder=Holder,

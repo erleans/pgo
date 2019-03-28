@@ -7,6 +7,7 @@
          extended_query/3,
          extended_query/4,
          extended_query/5,
+         ping/1,
          close/1]).
 
 -define(DEFAULT_HOST, "127.0.0.1").
@@ -74,6 +75,11 @@ extended_query(Socket=#conn{pool=Pool}, Query, Parameters, DecodeOptions, Timing
                                                       query_time => Latency,
                                                       result => Result}),
     Result.
+
+-spec ping(#conn{}) -> ok | {error, term()}.
+ping(Conn=#conn{socket=Socket}) ->
+    gen_tcp:send(Socket, pgo_protocol:encode_sync_message()),
+    flush_until_ready_for_query(ok, Conn).
 
 close(undefined) ->
     ok;
