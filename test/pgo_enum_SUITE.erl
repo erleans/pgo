@@ -27,17 +27,17 @@ end_per_suite(_Config) ->
 
 select(_Config) ->
 
-    ?assertMatch(#{command := select, rows := [{{mood, <<"sad">>}}]},
+    ?assertMatch(#{command := select, rows := [{<<"sad">>}]},
                  pgo:query("select 'sad'::mood", [])),
 
-    ?assertMatch(#{command := select, rows := [{{mood, <<"sad">>}}]},
+    ?assertMatch(#{command := select, rows := [{<<"sad">>}]},
                  pgo:query("select 'sad'::mood;", [])),
-    ?assertMatch(#{command := select, rows := [{{mood, <<"sad">>}}]},
+    ?assertMatch(#{command := select, rows := [{<<"sad">>}]},
                  pgo:query("select $1::mood;", [<<"sad">>])),
-    ?assertMatch(#{command := select, rows := [{{array, [{mood, <<"sad">>}]}}]},
+    ?assertMatch(#{command := select, rows := [{[<<"sad">>]}]},
                  pgo:query("select '{sad}'::mood[];")),
-    ?assertMatch(#{command := select, rows := [{{array, [{mood, <<"sad">>}]}}]},
-                 pgo:query("select $1::mood[];", [{array, [<<"sad">>]}])).
+    ?assertMatch(#{command := select, rows := [{[<<"sad">>]}]},
+                 pgo:query("select $1::mood[];", [[<<"sad">>]])).
 
 insert(_Config) ->
     ?assertMatch(#{command := create},
@@ -48,5 +48,5 @@ insert(_Config) ->
                            [<<"sad">>])),
 
     ?assertMatch(#{command := select,
-                   rows := [{{mood, <<"sad">>}}]},
+                   rows := [{<<"sad">>}]},
                  pgo:query("select a_mood from moods")).

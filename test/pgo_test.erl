@@ -14,19 +14,6 @@
 -define(UNTIL(X), (fun Until(I) when I =:= 10 -> erlang:error(fail);
                        Until(I) -> case X of true -> ok; false -> timer:sleep(10), Until(I+1) end end)(0)).
 
-kill_sup(SupPid) ->
-    OldTrapExit = process_flag(trap_exit, true),
-    exit(SupPid, normal),
-    receive {'EXIT', SupPid, _Reason} -> ok after 5000 -> throw({error, timeout}) end,
-    process_flag(trap_exit, OldTrapExit).
-
-start_pool() ->
-    application:ensure_all_started(pgo),
-    {ok, Pid} = pgo_pool:start_link(default, [{size, 1}, {database, "test"}, {user, "test"}]),
-    Tid = pgo_pool:tid(default),
-    ?UNTIL((catch ets:info(Tid, size)) =:= 1),
-    {ok, Pid}.
-
 %% array_types_test_() ->
 %%     {setup,
 %%      fun() ->

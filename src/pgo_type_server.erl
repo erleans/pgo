@@ -9,6 +9,8 @@
          ready/3,
          terminate/3]).
 
+-include_lib("pg_datatypes/include/pg_datatypes.hrl").
+
 -record(data, {pool        :: atom(),
                pool_config  :: pgo:pool_config(),
                last_reload :: integer() | undefined}).
@@ -24,7 +26,7 @@ reload_cast(Pid) ->
 
 init([Pool, PoolConfig]) ->
     erlang:process_flag(trap_exit, true),
-    ets:new(Pool, [named_table, protected]),
+    ets:new(Pool, [named_table, protected, {keypos, 2}]),
     {ok, ready, #data{pool=Pool, pool_config=PoolConfig},
      {next_event, internal, load}}.
 
@@ -60,7 +62,8 @@ terminate(_, _, #data{pool=Pool}) ->
 load(Pool, LastReload, RequestTime, PoolConfig) when LastReload < RequestTime ->
     try pgo_handler:open(Pool, PoolConfig) of
         {ok, Conn} ->
-            load_and_update_types(Conn, Pool);
+            load_and_update_types(Conn, Pool),
+            pg_datatypes:update(Pool);
         {error, _} ->
             failed
     catch
@@ -70,11 +73,21 @@ load(Pool, LastReload, RequestTime, PoolConfig) when LastReload < RequestTime ->
 load(_, _, _, _) ->
     ok.
 
+-define(BOOTSTRAP_QUERY, ["SELECT oid, typname, typsend::text, typreceive::text,"
+                          "typoutput::text, typinput::text, typelem FROM pg_type"]).
+
 load_and_update_types(Conn, Pool) ->
     try
-        #{rows := Oids} = pgo_handler:extended_query(Conn, "SELECT oid, typname FROM pg_type", [],
+        #{rows := Oids} = pgo_handler:extended_query(Conn, ?BOOTSTRAP_QUERY, [],
                                                      [no_reload_types], #{queue_time => undefined}),
-        [ets:insert(Pool, {Oid, binary_to_atom(Typename, utf8)}) || {Oid, Typename} <- Oids]
+        [ets:insert(Pool, #type_info{oid=Oid,
+                                     name=binary:copy(Name),
+                                     typsend=binary:copy(Send),
+                                     typreceive=binary:copy(Receive),
+                                     output=binary:copy(Output),
+                                     input=binary:copy(Input),
+                                     array_elem=ArrayOid})
+         || {Oid, Name, Send, Receive, Output, Input, ArrayOid} <- Oids]
     catch
         _:_ ->
             failed

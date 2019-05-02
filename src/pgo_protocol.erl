@@ -162,162 +162,187 @@ encode_numeric(Float, _Weight, Scale) ->
 -spec encode_parameter(any(), oid() | undefined, atom(), boolean()) -> iodata().
 encode_parameter(null, _Type, _OIDMap, _IntegerDateTimes) ->
     <<-1:32/integer>>;
-encode_parameter({Numeric, Weight, Scale}, ?NUMERICOID, _OIDMap, _IntegerDateTimes) ->
-    D = encode_numeric(Numeric, Weight, Scale),
-    [<<(iolist_size(D)):32>> | D];
-encode_parameter(Numeric, ?NUMERICOID, OIDMap, IntegerDateTimes) ->
-    encode_parameter({Numeric, 8, 5}, ?NUMERICOID, OIDMap, IntegerDateTimes);
-encode_parameter(Float, ?FLOAT8OID, _OIDMap, _IntegerDateTimes) ->
-    <<8:32/integer, Float:1/big-float-unit:64>>;
-encode_parameter(Integer, ?INT2OID, _OIDMap, _IntegerDateTimes) when is_integer(Integer) ->
-    <<2:32/integer, Integer:16>>;
-encode_parameter(Integer, ?INT4OID, _OIDMap, _IntegerDateTimes) when is_integer(Integer) ->
-    <<4:32/integer, Integer:32>>;
-encode_parameter(UUID, ?UUIDOID, _OIDMap, _IntegerDateTimes) ->
-    encode_uuid(UUID);
-encode_parameter(Binary, ?TEXTOID, _OIDMap, _IntegerDateTimes) when is_binary(Binary) ->
-    Text = unicode:characters_to_binary(Binary, utf8),
-    Size = byte_size(Text),
-    <<Size:32/integer, Text/binary>>;
-encode_parameter({array, []}, ?JSONBOID, _OIDMap, _IntegerDateTimes) ->
-    Binary = <<"{}">>,
-    Size = byte_size(Binary),
-    <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
-encode_parameter({array, List}, Type, OIDMap, IntegerDateTimes) ->
-    encode_array(List, Type, OIDMap, IntegerDateTimes);
-encode_parameter(Binary, ?JSONBOID, _OIDMap, _IntegerDateTimes) when is_binary(Binary) ->
-    Size = byte_size(Binary),
-    <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
-encode_parameter({jsonb, Binary}, ?JSONBOID, _OIDMap, _IntegerDateTimes) ->
-    Size = byte_size(Binary),
-    <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
-encode_parameter(Binary, ?JSONBOID, _OIDMap, _IntegerDateTimes) ->
-    Size = byte_size(Binary),
-    <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
-encode_parameter({json, Binary}, _Type, _OIDMap, _IntegerDateTimes) ->
-    Size = byte_size(Binary),
-    <<Size:32/integer, Binary/binary>>;
-encode_parameter(Binary, ?JSONOID, _OIDMap, _IntegerDateTimes) ->
-    Size = byte_size(Binary),
-    <<Size:32/integer, Binary/binary>>;
-encode_parameter({jsonb, Binary}, _Type, _OIDMap, _IntegerDateTimes) ->
-    Size = byte_size(Binary),
-    <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
+encode_parameter(Parameter, Oid, OidMap, _) ->
+    ct:pal("P ~p ~p", [Parameter, Oid]),
+    Encoded = pg_datatypes:encode(OidMap, Parameter, Oid),
+    [<<(iolist_size(Encoded)):32>>, Encoded].
 
-encode_parameter({interval, {T, D, M}}, _, _OIDMap, true) ->
-    <<16:32/integer, (encode_time(T, true)):64, D:32, M:32>>;
-encode_parameter({T, D, M}, ?INTERVALOID, _OIDMap, true) ->
-    <<16:32/integer, (encode_time(T, true)):64, D:32, M:32>>;
-encode_parameter({T, D, M}, ?INTERVALOID, _OIDMap, false) ->
-    <<16:32/integer, (encode_time(T, false)):1/big-float-unit:64, D:32, M:32>>;
+%% encode_parameter(null, _Type, _OIDMap, _IntegerDateTimes) ->
+%%     <<-1:32/integer>>;
+%% encode_parameter({Numeric, Weight, Scale}, ?NUMERICOID, _OIDMap, _IntegerDateTimes) ->
+%%     D = encode_numeric(Numeric, Weight, Scale),
+%%     [<<(iolist_size(D)):32>> | D];
+%% encode_parameter(Numeric, ?NUMERICOID, OIDMap, IntegerDateTimes) ->
+%%     encode_parameter({Numeric, 8, 5}, ?NUMERICOID, OIDMap, IntegerDateTimes);
+%% encode_parameter(Float, ?FLOAT8OID, _OIDMap, _IntegerDateTimes) ->
+%%     <<8:32/integer, Float:1/big-float-unit:64>>;
+%% encode_parameter(Integer, ?INT2OID, _OIDMap, _IntegerDateTimes) when is_integer(Integer) ->
+%%     Bin = pg_codec_integer:encode(Integer, int2, []),
+%%     [<<2:32/integer>>, Bin];
+%% encode_parameter(Integer, ?INT4OID, _OIDMap, _IntegerDateTimes) when is_integer(Integer) ->
+%%     Bin = pg_codec_integer:encode(Integer, int4, []),
+%%     [<<4:32/integer>>, Bin];
+%% encode_parameter(Integer, ?INT8OID, _OIDMap, _IntegerDateTimes) ->
+%%     Bin = pg_codec_integer:encode(Integer, int8, []),
+%%     [<<8:32/integer>>, Bin];
+%% encode_parameter(UUID, ?UUIDOID, _OIDMap, _IntegerDateTimes) ->
+%%     encode_uuid(UUID);
 
-encode_parameter(Binary, _Type, _OIDMap, _IntegerDateTimes) when is_binary(Binary) ->
-    Size = byte_size(Binary),
-    <<Size:32/integer, Binary/binary>>;
-encode_parameter(Float, _Type, _OIDMap, _IntegerDateTimes) when is_float(Float) ->
-    <<4:32/integer, Float:1/big-float-unit:32>>;
-encode_parameter(Integer, ?INT8OID, _OIDMap, _IntegerDateTimes) ->
-    <<8:32/integer, Integer:64>>;
-encode_parameter(Integer, _Type, _OIDMap, _IntegerDateTimes) when is_integer(Integer) ->
-    <<4:32/integer, Integer:32>>;
+%% encode_parameter(Range, ?INT4RANGEOID, _OIDMap, _IntegerDateTimes) ->
+%%     Bin = pg_codec_intrange:encode(Range, int4range, []),
+%%     [<<(iolist_size(Bin)):1/big-signed-unit:32>>, Bin];
+%% encode_parameter(Range, ?INT8RANGEOID, _OIDMap, _IntegerDateTimes) ->
+%%     Bin = pg_codec_intrange:encode(Range, int8range, []),
+%%     [<<(iolist_size(Bin)):1/big-signed-unit:32>>, Bin];
 
-encode_parameter(true, _Type, _OIDMap, _IntegerDateTimes) ->
-    <<1:32/integer, 1:1/big-signed-unit:8>>;
-encode_parameter(false, _Type, _OIDMap, _IntegerDateTimes) ->
-    <<1:32/integer, 0:1/big-signed-unit:8>>;
+%% encode_parameter(Range, ?TSRANGEOID, _OIDMap, _IntegerDateTimes) ->
+%%     Bin = pg_codec_timerange:encode(Range, tsrange, pg_idatetime),
+%%     [<<(iolist_size(Bin)):1/big-signed-unit:32>>, Bin];
 
-encode_parameter(#{x := X, y := Y}, ?POINTOID, _OIDMap, _IntegerDateTimes) ->
-    <<16:32/integer, X:1/big-float-unit:64, Y:1/big-float-unit:64>>;
-encode_parameter(#{long := X, lat := Y}, ?POINTOID, _OIDMap, _IntegerDateTimes) ->
-    <<16:32/integer, X:1/big-float-unit:64, Y:1/big-float-unit:64>>;
-encode_parameter({point, {X, Y}}, ?POINTOID, _OIDMap, _IntegerDateTimes) ->
-    <<16:32/integer, X:1/big-float-unit:64, Y:1/big-float-unit:64>>;
-encode_parameter({X, Y}, ?POINTOID, _OIDMap, _IntegerDateTimes) ->
-    <<16:32/integer, X:1/big-float-unit:64, Y:1/big-float-unit:64>>;
+%% %% Do we need to be checking client encoding value to know if utf8 or latin1?
+%% encode_parameter(Binary, ?TEXTOID, _OIDMap, _IntegerDateTimes) when is_binary(Binary) ->
+%%     Text = unicode:characters_to_binary(Binary, utf8),
+%%     Size = byte_size(Text),
+%%     <<Size:32/integer, Text/binary>>;
 
-encode_parameter(T={{_, _, _}, {_, _, _}}, ?TIMESTAMPOID, _OIDMap, true) ->
-    <<8:32/integer, (encode_timestamp(T, true)):64>>;
-encode_parameter(T={{_, _, _}, {_, _, _}}, ?TIMESTAMPOID, _OIDMap, false) ->
-    <<8:32/integer, (encode_timestamp(T, false)):1/big-float-unit:64>>;
+%% encode_parameter({array, []}, ?JSONBOID, _OIDMap, _IntegerDateTimes) ->
+%%     Binary = <<"{}">>,
+%%     Size = byte_size(Binary),
+%%     <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
+%% encode_parameter({array, List}, Type, OIDMap, IntegerDateTimes) ->
+%%     encode_array(List, Type, OIDMap, IntegerDateTimes);
+%% encode_parameter(Binary, ?JSONBOID, _OIDMap, _IntegerDateTimes) when is_binary(Binary) ->
+%%     Size = byte_size(Binary),
+%%     <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
+%% encode_parameter({jsonb, Binary}, ?JSONBOID, _OIDMap, _IntegerDateTimes) ->
+%%     Size = byte_size(Binary),
+%%     <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
+%% encode_parameter(Binary, ?JSONBOID, _OIDMap, _IntegerDateTimes) ->
+%%     Size = byte_size(Binary),
+%%     <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
+%% encode_parameter({json, Binary}, _Type, _OIDMap, _IntegerDateTimes) ->
+%%     Size = byte_size(Binary),
+%%     <<Size:32/integer, Binary/binary>>;
+%% encode_parameter(Binary, ?JSONOID, _OIDMap, _IntegerDateTimes) ->
+%%     Size = byte_size(Binary),
+%%     <<Size:32/integer, Binary/binary>>;
+%% encode_parameter({jsonb, Binary}, _Type, _OIDMap, _IntegerDateTimes) ->
+%%     Size = byte_size(Binary),
+%%     <<(Size+1):32/integer, ?JSONB_VERSION_1:8, Binary/binary>>;
 
-encode_parameter(Time, ?TIMEOID, _OIDMap, true) ->
-    <<8:32/integer, (encode_time(Time, true)):64>>;
-encode_parameter(Time, ?TIMEOID, _OIDMap, false) ->
-    <<8:32/integer, (encode_time(Time, false)):1/big-float-unit:64>>;
+%% encode_parameter({interval, {T, D, M}}, _, _OIDMap, true) ->
+%%     <<16:32/integer, (encode_time(T, true)):64, D:32, M:32>>;
+%% encode_parameter({T, D, M}, ?INTERVALOID, _OIDMap, true) ->
+%%     <<16:32/integer, (encode_time(T, true)):64, D:32, M:32>>;
+%% encode_parameter({T, D, M}, ?INTERVALOID, _OIDMap, false) ->
+%%     <<16:32/integer, (encode_time(T, false)):1/big-float-unit:64, D:32, M:32>>;
 
-encode_parameter(Date, ?DATEOID, _OIDMap, _IntegerDateTimes) ->
-    <<4:32/integer, (encode_date(Date) - ?POSTGRES_EPOC_JDATE):32>>;
+%% encode_parameter(Binary, _Type, _OIDMap, _IntegerDateTimes) when is_binary(Binary) ->
+%%     Size = byte_size(Binary),
+%%     <<Size:32/integer, Binary/binary>>;
+%% encode_parameter(Float, _Type, _OIDMap, _IntegerDateTimes) when is_float(Float) ->
+%%     <<4:32/integer, Float:1/big-float-unit:32>>;
 
-encode_parameter({Time, Tz}, ?TIMETZOID, _OIDMap, true) ->
-    <<12:32/integer, (encode_time(Time, true)):64, Tz:32>>;
-encode_parameter({Time, Tz}, ?TIMETZOID, _OIDMap, false) ->
-    <<12:32/integer, (encode_time(Time, false)):1/big-float-unit:64, Tz:32>>;
+%% %% encode_parameter(Integer, _Type, _OIDMap, _IntegerDateTimes) when is_integer(Integer) ->
+%% %%     <<4:32/integer, Integer:32>>;
 
-encode_parameter(Timestamp, ?TIMESTAMPTZOID, _OIDMap, true) ->
-    <<(encode_timestamp(Timestamp, true)):64>>;
-encode_parameter(Timestamp, ?TIMESTAMPTZOID, _OIDMap, false) ->
-    <<(encode_timestamp(Timestamp, false)):1/big-float-unit:64>>;
+%% encode_parameter(true, _Type, _OIDMap, _IntegerDateTimes) ->
+%%     <<1:32/integer, 1:1/big-signed-unit:8>>;
+%% encode_parameter(false, _Type, _OIDMap, _IntegerDateTimes) ->
+%%     <<1:32/integer, 0:1/big-signed-unit:8>>;
 
-encode_parameter(Binary, _, _OIDMap, _IntegerDateTimes) when is_binary(Binary)
-                                                             ; is_list(Binary)->
-    Text = unicode:characters_to_binary(Binary, utf8),
-    Size = byte_size(Text),
-    <<Size:32/integer, Text/binary>>;
-encode_parameter(Value, _Type, _OIDMap, _IntegerDateTimes) ->
-    throw({badarg, Value}).
+%% encode_parameter(#{x := X, y := Y}, ?POINTOID, _OIDMap, _IntegerDateTimes) ->
+%%     <<16:32/integer, X:1/big-float-unit:64, Y:1/big-float-unit:64>>;
+%% encode_parameter(#{long := X, lat := Y}, ?POINTOID, _OIDMap, _IntegerDateTimes) ->
+%%     <<16:32/integer, X:1/big-float-unit:64, Y:1/big-float-unit:64>>;
+%% encode_parameter({point, {X, Y}}, ?POINTOID, _OIDMap, _IntegerDateTimes) ->
+%%     <<16:32/integer, X:1/big-float-unit:64, Y:1/big-float-unit:64>>;
+%% encode_parameter({X, Y}, ?POINTOID, _OIDMap, _IntegerDateTimes) ->
+%%     <<16:32/integer, X:1/big-float-unit:64, Y:1/big-float-unit:64>>;
 
-encode_timestamp({Date, Time}, true) ->
-    D = encode_date(Date) - ?POSTGRES_EPOC_JDATE,
-    D * ?USECS_PER_DAY + encode_time(Time, true);
-encode_timestamp({Date, Time}, false) ->
-    D = encode_date(Date) - ?POSTGRES_EPOC_JDATE,
-    D * ?SECS_PER_DAY + encode_time(Time, false).
+%% encode_parameter(T={{_, _, _}, {_, _, _}}, ?TIMESTAMPOID, _OIDMap, true) ->
+%%     <<8:32/integer, (encode_timestamp(T, true)):64>>;
+%% encode_parameter(T={{_, _, _}, {_, _, _}}, ?TIMESTAMPOID, _OIDMap, false) ->
+%%     <<8:32/integer, (encode_timestamp(T, false)):1/big-float-unit:64>>;
 
-encode_date({Y, M, D}) ->
-    M2 = case M > 2 of
-        true ->
-            M + 1;
-        false ->
-            M + 13
-    end,
-    Y2 = case M > 2 of
-        true ->
-            Y + 4800;
-        false ->
-            Y + 4799
-    end,
-    C = Y2 div 100,
-    J1 = Y2 * 365 - 32167,
-    J2 = J1 + (Y2 div 4 - C + C div 4),
-    J2 + 7834 * M2 div 256 + D.
+%% encode_parameter(Time, ?TIMEOID, _OIDMap, true) ->
+%%     <<8:32/integer, (encode_time(Time, true)):64>>;
+%% encode_parameter(Time, ?TIMEOID, _OIDMap, false) ->
+%%     <<8:32/integer, (encode_time(Time, false)):1/big-float-unit:64>>;
 
-encode_time(0, _) ->
-    0;
-encode_time({H, M, S}, true) ->
-    US = trunc(round(S * ?USECS_PER_SEC)),
-    ((H * ?MINS_PER_HOUR + M) * ?SECS_PER_MINUTE) * ?USECS_PER_SEC + US;
-encode_time({H, M, S}, false) ->
-    ((H * ?MINS_PER_HOUR + M) * ?SECS_PER_MINUTE) + S.
+%% encode_parameter(Date, ?DATEOID, _OIDMap, _IntegerDateTimes) ->
+%%     <<4:32/integer, (encode_date(Date) - ?POSTGRES_EPOC_JDATE):32>>;
 
-encode_array(Elements, ArrayType, OIDMap, IntegerDateTimes) ->
-    ElementType = array_type_to_element_type(ArrayType, OIDMap),
-    ArrayElements = encode_array_elements(Elements, ElementType, OIDMap, IntegerDateTimes, []),
-    encode_array_binary(ArrayElements, ElementType).
+%% encode_parameter({Time, Tz}, ?TIMETZOID, _OIDMap, true) ->
+%%     <<12:32/integer, (encode_time(Time, true)):64, Tz:32>>;
+%% encode_parameter({Time, Tz}, ?TIMETZOID, _OIDMap, false) ->
+%%     <<12:32/integer, (encode_time(Time, false)):1/big-float-unit:64, Tz:32>>;
 
-encode_uuid(<<>>) ->
-    <<-1:32/integer>>;
-encode_uuid(null) ->
-    <<-1:32/integer>>;
-encode_uuid(<<U:128>>) ->
-    <<16:1/big-signed-unit:32, U:128>>;
-encode_uuid(U) when is_integer(U) ->
-    <<16:1/big-signed-unit:32, U:128>>;
-encode_uuid(U) when is_binary(U) ->
-    encode_uuid(binary_to_list(U));
-encode_uuid(U) ->
-    Hex = [H || H <- U, H =/= $-],
-    {ok, [Int], _} = io_lib:fread("~16u", Hex),
-    <<16:1/big-signed-unit:32, Int:128>>.
+%% encode_parameter(Timestamp, ?TIMESTAMPTZOID, _OIDMap, true) ->
+%%     <<(encode_timestamp(Timestamp, true)):64>>;
+%% encode_parameter(Timestamp, ?TIMESTAMPTZOID, _OIDMap, false) ->
+%%     <<(encode_timestamp(Timestamp, false)):1/big-float-unit:64>>;
+
+%% encode_parameter(Binary, _, _OIDMap, _IntegerDateTimes) when is_binary(Binary)
+%%                                                              ; is_list(Binary)->
+%%     Text = unicode:characters_to_binary(Binary, utf8),
+%%     Size = byte_size(Text),
+%%     <<Size:32/integer, Text/binary>>;
+%% encode_parameter(Value, _Type, _OIDMap, _IntegerDateTimes) ->
+%%     throw({badarg, Value}).
+
+%% encode_timestamp({Date, Time}, true) ->
+%%     D = encode_date(Date) - ?POSTGRES_EPOC_JDATE,
+%%     D * ?USECS_PER_DAY + encode_time(Time, true);
+%% encode_timestamp({Date, Time}, false) ->
+%%     D = encode_date(Date) - ?POSTGRES_EPOC_JDATE,
+%%     D * ?SECS_PER_DAY + encode_time(Time, false).
+
+%% encode_date({Y, M, D}) ->
+%%     M2 = case M > 2 of
+%%         true ->
+%%             M + 1;
+%%         false ->
+%%             M + 13
+%%     end,
+%%     Y2 = case M > 2 of
+%%         true ->
+%%             Y + 4800;
+%%         false ->
+%%             Y + 4799
+%%     end,
+%%     C = Y2 div 100,
+%%     J1 = Y2 * 365 - 32167,
+%%     J2 = J1 + (Y2 div 4 - C + C div 4),
+%%     J2 + 7834 * M2 div 256 + D.
+
+%% encode_time(0, _) ->
+%%     0;
+%% encode_time({H, M, S}, true) ->
+%%     US = trunc(round(S * ?USECS_PER_SEC)),
+%%     ((H * ?MINS_PER_HOUR + M) * ?SECS_PER_MINUTE) * ?USECS_PER_SEC + US;
+%% encode_time({H, M, S}, false) ->
+%%     ((H * ?MINS_PER_HOUR + M) * ?SECS_PER_MINUTE) + S.
+
+%% encode_array(Elements, ArrayType, OIDMap, IntegerDateTimes) ->
+%%     ElementType = array_type_to_element_type(ArrayType, OIDMap),
+%%     ArrayElements = encode_array_elements(Elements, ElementType, OIDMap, IntegerDateTimes, []),
+%%     encode_array_binary(ArrayElements, ElementType).
+
+%% encode_uuid(<<>>) ->
+%%     <<-1:32/integer>>;
+%% encode_uuid(null) ->
+%%     <<-1:32/integer>>;
+%% encode_uuid(<<U:128>>) ->
+%%     <<16:1/big-signed-unit:32, U:128>>;
+%% encode_uuid(U) when is_integer(U) ->
+%%     <<16:1/big-signed-unit:32, U:128>>;
+%% encode_uuid(U) when is_binary(U) ->
+%%     encode_uuid(binary_to_list(U));
+%% encode_uuid(U) ->
+%%     Hex = [H || H <- U, H =/= $-],
+%%     {ok, [Int], _} = io_lib:fread("~16u", Hex),
+%%     <<16:1/big-signed-unit:32, Int:128>>.
 
 array_type_to_element_type(undefined, _OIDMap) -> undefined;
 array_type_to_element_type(?CIDRARRAYOID, _OIDMap) -> ?CIDROID;
@@ -868,144 +893,157 @@ type_to_oid(Type, Pool) ->
             undefined
     end.
 
-decode_value_bin(?JSONBOID, <<?JSONB_VERSION_1:8, Value/binary>>, _OIDMap, _IntegerDateTimes) ->
-    {jsonb, Value};
-decode_value_bin(?JSONOID, <<Value/binary>>, _OIDMap, _IntegerDateTimes) ->
-    {json, Value};
-decode_value_bin(?BOOLOID, <<0>>, _OIDMap, _DecodeOptions) -> false;
-decode_value_bin(?BOOLOID, <<1>>, _OIDMap, _DecodeOptions) -> true;
-decode_value_bin(?BYTEAOID, Value, _OIDMap, _DecodeOptions) -> Value;
-decode_value_bin(?NAMEOID, Value, _OIDMap, _DecodeOptions) -> Value;
-decode_value_bin(?INT8OID, <<Value:64/signed-integer>>, _OIDMap, _DecodeOptions) -> Value;
-decode_value_bin(?INT2OID, <<Value:16/signed-integer>>, _OIDMap, _DecodeOptions) -> Value;
-decode_value_bin(?INT4OID, <<Value:32/signed-integer>>, _OIDMap, _DecodeOptions) -> Value;
+%% types necessary for type server bootstrapping
 decode_value_bin(?OIDOID, <<Value:32/signed-integer>>, _OIDMap, _DecodeOptions) ->
     Value;
-decode_value_bin(?TEXTOID, Value, _OIDMap, _DecodeOptions) -> Value;
-decode_value_bin(?BPCHAROID, Value, _OIDMap, _DecodeOptions) -> Value;
-decode_value_bin(?VARCHAROID, Value, _OIDMap, _DecodeOptions) -> Value;
-decode_value_bin(?FLOAT4OID, <<Value:32/float>>, _OIDMap, _DecodeOptions) -> Value;
-decode_value_bin(?FLOAT4OID, <<127,192,0,0>>, _OIDMap, _DecodeOptions) -> 'NaN';
-decode_value_bin(?FLOAT4OID, <<127,128,0,0>>, _OIDMap, _DecodeOptions) -> 'Infinity';
-decode_value_bin(?FLOAT4OID, <<255,128,0,0>>, _OIDMap, _DecodeOptions) -> '-Infinity';
-decode_value_bin(?FLOAT8OID, <<Value:64/float>>, _OIDMap, _DecodeOptions) -> Value;
-decode_value_bin(?FLOAT8OID, <<127,248,0,0,0,0,0,0>>, _OIDMap, _DecodeOptions) -> 'NaN';
-decode_value_bin(?FLOAT8OID, <<127,240,0,0,0,0,0,0>>, _OIDMap, _DecodeOptions) -> 'Infinity';
-decode_value_bin(?FLOAT8OID, <<255,240,0,0,0,0,0,0>>, _OIDMap, _DecodeOptions) -> '-Infinity';
-decode_value_bin(?UUIDOID, Value, _OIDMap, _DecodeOptions) ->
-    <<UUID_A:32/integer, UUID_B:16/integer, UUID_C:16/integer, UUID_D:16/integer, UUID_E:48/integer>> = Value,
-    UUIDStr = io_lib:format("~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b", [UUID_A, UUID_B, UUID_C, UUID_D, UUID_E]),
-    list_to_binary(UUIDStr);
-    %% Value;
-decode_value_bin(?DATEOID, <<Date:32/signed-integer>>, _OIDMap, _DecodeOptions) ->
-    calendar:gregorian_days_to_date(Date + ?POSTGRESQL_GD_EPOCH);
-decode_value_bin(?TIMEOID, TimeBin, _OIDMap, DecodeOptions) ->
-    decode_time(TimeBin, not proplists:get_bool(float_datetimes, DecodeOptions), DecodeOptions);
-decode_value_bin(?TIMETZOID, TimeTZBin, _OIDMap, DecodeOptions) ->
-    decode_time_tz(TimeTZBin, proplists:get_bool(integer_datetimes, DecodeOptions), DecodeOptions);
-decode_value_bin(?TIMESTAMPOID, TimestampBin, _OIDMap, DecodeOptions) ->
-    decode_timestamp(TimestampBin, not proplists:get_bool(float_datetimes, DecodeOptions), DecodeOptions);
-decode_value_bin(?TIMESTAMPTZOID, TimestampBin, _OIDMap, DecodeOptions) ->
-    decode_timestamp(TimestampBin, not proplists:get_bool(float_datetimes, DecodeOptions), DecodeOptions);
-decode_value_bin(?NUMERICOID, NumericBin, _OIDMap, _DecodeOptions) ->
-    decode_numeric_bin(NumericBin);
-decode_value_bin(?POINTOID, <<X:64/float, Y:64/float>>, _OIDMap, _DecodeOptions) ->
-    %% TODO: make configurable between this and returning #{x => X, y => Y}
-    #{long => X, lat => Y};
-decode_value_bin(?LSEGOID, <<P1X:64/float, P1Y:64/float, P2X:64/float, P2Y:64/float>>, _OIDMap, _DecodeOptions) ->
-    {lseg, {P1X, P1Y}, {P2X, P2Y}};
-decode_value_bin(?BOXOID, <<P1X:64/float, P1Y:64/float, P2X:64/float, P2Y:64/float>>, _OIDMap, _DecodeOptions) ->
-    {box, {P1X, P1Y}, {P2X, P2Y}};
-decode_value_bin(?PATHOID, <<1:8/unsigned-integer, PointsBin/binary>>, _OIDMap, _DecodeOptions) ->
-    {path, closed, decode_points_bin(PointsBin)};
-decode_value_bin(?PATHOID, <<0:8/unsigned-integer, PointsBin/binary>>, _OIDMap, _DecodeOptions) ->
-    {path, open, decode_points_bin(PointsBin)};
-decode_value_bin(?POLYGONOID, Points, _OIDMap, _DecodeOptions) ->
-    {polygon, decode_points_bin(Points)};
-decode_value_bin(?VOIDOID, <<>>, _OIDMap, _DecodeOptions) ->
-    null;
-decode_value_bin(TypeOID, Value, OIDMap, DecodeOptions) ->
-    Type = decode_oid(TypeOID, OIDMap),
-    if not is_atom(Type) -> {Type, Value};
-        true ->
-            case atom_to_list(Type) of
-                [$_ | _] -> % Array
-                    decode_array_bin(Value, OIDMap, DecodeOptions);
-                _ -> {Type, Value}
-            end
-    end.
+decode_value_bin(?TEXTOID, Value, _OIDMap, _DecodeOptions) ->
+    Value;
+decode_value_bin(?NAMEOID, Value, _OIDMap, _DecodeOptions) ->
+    Value;
+decode_value_bin(Oid, Value, OidMap, _) ->
+    io:format("TO DECODE ~p ~p~n", [Oid, Value]),
+    Decoded = pg_datatypes:decode(OidMap, Value, Oid),
+    io:format("DECODED ~p ~p~n", [Oid, Decoded]),
+    Decoded.
 
-decode_points_bin(<<N:32/unsigned-integer, Points/binary>>) ->
-    decode_points_bin(N, Points, []).
+%% decode_value_bin(?JSONBOID, <<?JSONB_VERSION_1:8, Value/binary>>, _OIDMap, _IntegerDateTimes) ->
+%%     {jsonb, Value};
+%% decode_value_bin(?JSONOID, <<Value/binary>>, _OIDMap, _IntegerDateTimes) ->
+%%     {json, Value};
+%% decode_value_bin(?BOOLOID, <<0>>, _OIDMap, _DecodeOptions) -> false;
+%% decode_value_bin(?BOOLOID, <<1>>, _OIDMap, _DecodeOptions) -> true;
+%% decode_value_bin(?BYTEAOID, Value, _OIDMap, _DecodeOptions) -> Value;
+%% decode_value_bin(?NAMEOID, Value, _OIDMap, _DecodeOptions) -> Value;
+%% decode_value_bin(?INT8OID, <<Value:64/signed-integer>>, _OIDMap, _DecodeOptions) -> Value;
+%% decode_value_bin(?INT2OID, <<Value:16/signed-integer>>, _OIDMap, _DecodeOptions) -> Value;
+%% decode_value_bin(?INT4OID, <<Value:32/signed-integer>>, _OIDMap, _DecodeOptions) -> Value;
+%% decode_value_bin(?INT4RANGEOID, Value, _OIDMap, _DecodeOptions) -> pg_codec_intrange:decode(Value, int4range, []);
+%% decode_value_bin(?INT8RANGEOID, Value, _OIDMap, _DecodeOptions) -> pg_codec_intrange:decode(Value, int8range, []);
+%% decode_value_bin(?TSRANGEOID, Value, _OIDMap, _DecodeOptions) -> pg_codec_timerange:decode(Value, tsrange, pg_idatetime);
+%% decode_value_bin(?BPCHAROID, Value, _OIDMap, _DecodeOptions) -> Value;
+%% decode_value_bin(?VARCHAROID, Value, _OIDMap, _DecodeOptions) -> Value;
+%% decode_value_bin(?FLOAT4OID, <<Value:32/float>>, _OIDMap, _DecodeOptions) -> Value;
+%% decode_value_bin(?FLOAT4OID, <<127,192,0,0>>, _OIDMap, _DecodeOptions) -> 'NaN';
+%% decode_value_bin(?FLOAT4OID, <<127,128,0,0>>, _OIDMap, _DecodeOptions) -> 'Infinity';
+%% decode_value_bin(?FLOAT4OID, <<255,128,0,0>>, _OIDMap, _DecodeOptions) -> '-Infinity';
+%% decode_value_bin(?FLOAT8OID, <<Value:64/float>>, _OIDMap, _DecodeOptions) -> Value;
+%% decode_value_bin(?FLOAT8OID, <<127,248,0,0,0,0,0,0>>, _OIDMap, _DecodeOptions) -> 'NaN';
+%% decode_value_bin(?FLOAT8OID, <<127,240,0,0,0,0,0,0>>, _OIDMap, _DecodeOptions) -> 'Infinity';
+%% decode_value_bin(?FLOAT8OID, <<255,240,0,0,0,0,0,0>>, _OIDMap, _DecodeOptions) -> '-Infinity';
+%% decode_value_bin(?UUIDOID, Value, _OIDMap, _DecodeOptions) ->
+%%     <<UUID_A:32/integer, UUID_B:16/integer, UUID_C:16/integer, UUID_D:16/integer, UUID_E:48/integer>> = Value,
+%%     UUIDStr = io_lib:format("~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b", [UUID_A, UUID_B, UUID_C, UUID_D, UUID_E]),
+%%     list_to_binary(UUIDStr);
+%%     %% Value;
+%% decode_value_bin(?DATEOID, <<Date:32/signed-integer>>, _OIDMap, _DecodeOptions) ->
+%%     calendar:gregorian_days_to_date(Date + ?POSTGRESQL_GD_EPOCH);
+%% decode_value_bin(?TIMEOID, TimeBin, _OIDMap, DecodeOptions) ->
+%%     decode_time(TimeBin, not proplists:get_bool(float_datetimes, DecodeOptions), DecodeOptions);
+%% decode_value_bin(?TIMETZOID, TimeTZBin, _OIDMap, DecodeOptions) ->
+%%     decode_time_tz(TimeTZBin, proplists:get_bool(integer_datetimes, DecodeOptions), DecodeOptions);
+%% decode_value_bin(?TIMESTAMPOID, TimestampBin, _OIDMap, DecodeOptions) ->
+%%     decode_timestamp(TimestampBin, not proplists:get_bool(float_datetimes, DecodeOptions), DecodeOptions);
+%% decode_value_bin(?TIMESTAMPTZOID, TimestampBin, _OIDMap, DecodeOptions) ->
+%%     decode_timestamp(TimestampBin, not proplists:get_bool(float_datetimes, DecodeOptions), DecodeOptions);
+%% decode_value_bin(?NUMERICOID, NumericBin, _OIDMap, _DecodeOptions) ->
+%%     decode_numeric_bin(NumericBin);
+%% decode_value_bin(?POINTOID, <<X:64/float, Y:64/float>>, _OIDMap, _DecodeOptions) ->
+%%     %% TODO: make configurable between this and returning #{x => X, y => Y}
+%%     #{long => X, lat => Y};
+%% decode_value_bin(?LSEGOID, <<P1X:64/float, P1Y:64/float, P2X:64/float, P2Y:64/float>>, _OIDMap, _DecodeOptions) ->
+%%     {lseg, {P1X, P1Y}, {P2X, P2Y}};
+%% decode_value_bin(?BOXOID, <<P1X:64/float, P1Y:64/float, P2X:64/float, P2Y:64/float>>, _OIDMap, _DecodeOptions) ->
+%%     {box, {P1X, P1Y}, {P2X, P2Y}};
+%% decode_value_bin(?PATHOID, <<1:8/unsigned-integer, PointsBin/binary>>, _OIDMap, _DecodeOptions) ->
+%%     {path, closed, decode_points_bin(PointsBin)};
+%% decode_value_bin(?PATHOID, <<0:8/unsigned-integer, PointsBin/binary>>, _OIDMap, _DecodeOptions) ->
+%%     {path, open, decode_points_bin(PointsBin)};
+%% decode_value_bin(?POLYGONOID, Points, _OIDMap, _DecodeOptions) ->
+%%     {polygon, decode_points_bin(Points)};
+%% decode_value_bin(?VOIDOID, <<>>, _OIDMap, _DecodeOptions) ->
+%%     null;
+%% decode_value_bin(TypeOID, Value, OIDMap, DecodeOptions) ->
+%%     Type = decode_oid(TypeOID, OIDMap),
+%%     if not is_atom(Type) -> {Type, Value};
+%%         true ->
+%%             case atom_to_list(Type) of
+%%                 [$_ | _] -> % Array
+%%                     decode_array_bin(Value, OIDMap, DecodeOptions);
+%%                 _ -> {Type, Value}
+%%             end
+%%     end.
 
-decode_points_bin(0, <<>>, Acc) ->
-    lists:reverse(Acc);
-decode_points_bin(N, <<PX:64/float, PY:64/float, Tail/binary>>, Acc) when N > 0 ->
-    decode_points_bin(N - 1, Tail, [{PX, PY}|Acc]).
+%% decode_points_bin(<<N:32/unsigned-integer, Points/binary>>) ->
+%%     decode_points_bin(N, Points, []).
 
-decode_array_bin(<<Dimensions:32/signed-integer, _Flags:32/signed-integer, ElementOID:32/signed-integer, Remaining/binary>>, OIDMap, DecodeOptions) ->
-    {RemainingData, DimsInfo} = lists:foldl(fun(_Pos, {Bin, Acc}) ->
-                <<Nbr:32/signed-integer, LBound:32/signed-integer, Next/binary>> = Bin,
-                {Next, [{Nbr, LBound} | Acc]}
-        end, {Remaining, []}, lists:seq(1, Dimensions)),
-    DataList = decode_array_bin_aux(ElementOID, RemainingData, OIDMap, DecodeOptions, []),
-    Expanded = expand(DataList, DimsInfo),
-    Expanded.
+%% decode_points_bin(0, <<>>, Acc) ->
+%%     lists:reverse(Acc);
+%% decode_points_bin(N, <<PX:64/float, PY:64/float, Tail/binary>>, Acc) when N > 0 ->
+%%     decode_points_bin(N - 1, Tail, [{PX, PY}|Acc]).
 
-expand([], []) ->
-    {array, []};
-expand([List], []) ->
-    List;
-expand(List, [{Nbr,_}|NextDim]) ->
-    List2 = expand_aux(List, Nbr, Nbr, [], []),
-    expand(List2, NextDim).
+%% decode_array_bin(<<Dimensions:32/signed-integer, _Flags:32/signed-integer, ElementOID:32/signed-integer, Remaining/binary>>, OIDMap, DecodeOptions) ->
+%%     {RemainingData, DimsInfo} = lists:foldl(fun(_Pos, {Bin, Acc}) ->
+%%                 <<Nbr:32/signed-integer, LBound:32/signed-integer, Next/binary>> = Bin,
+%%                 {Next, [{Nbr, LBound} | Acc]}
+%%         end, {Remaining, []}, lists:seq(1, Dimensions)),
+%%     DataList = decode_array_bin_aux(ElementOID, RemainingData, OIDMap, DecodeOptions, []),
+%%     Expanded = expand(DataList, DimsInfo),
+%%     Expanded.
 
-expand_aux([], 0, _, Current, Acc) ->
-    lists:reverse([{array, lists:reverse(Current)} | Acc]);
-expand_aux(List, 0, Nbr, Current, Acc) ->
-    expand_aux(List, Nbr, Nbr, [], [ {array, lists:reverse(Current)} | Acc]);
-expand_aux([E|Next], Level, Nbr, Current, Acc) ->
-    expand_aux(Next, Level-1, Nbr, [E | Current], Acc).
+%% expand([], []) ->
+%%     {array, []};
+%% expand([List], []) ->
+%%     List;
+%% expand(List, [{Nbr,_}|NextDim]) ->
+%%     List2 = expand_aux(List, Nbr, Nbr, [], []),
+%%     expand(List2, NextDim).
+
+%% expand_aux([], 0, _, Current, Acc) ->
+%%     lists:reverse([{array, lists:reverse(Current)} | Acc]);
+%% expand_aux(List, 0, Nbr, Current, Acc) ->
+%%     expand_aux(List, Nbr, Nbr, [], [ {array, lists:reverse(Current)} | Acc]);
+%% expand_aux([E|Next], Level, Nbr, Current, Acc) ->
+%%     expand_aux(Next, Level-1, Nbr, [E | Current], Acc).
 
 
-decode_array_bin_aux(_ElementOID, <<>>, _OIDMap, _DecodeOptions, Acc) ->
-    lists:reverse(Acc);
-decode_array_bin_aux(ElementOID, <<-1:32/signed-integer, Rest/binary>>, OIDMap, DecodeOptions, Acc) ->
-    decode_array_bin_aux(ElementOID, Rest, OIDMap, DecodeOptions, [null | Acc]);
-decode_array_bin_aux(ElementOID, <<Size:32/signed-integer, Next/binary>>, OIDMap, DecodeOptions, Acc) ->
-    {ValueBin, Rest} = split_binary(Next, Size),
-    Value = decode_value_bin(ElementOID, ValueBin, OIDMap, DecodeOptions),
-    decode_array_bin_aux(ElementOID, Rest, OIDMap, DecodeOptions, [Value | Acc]).
+%% decode_array_bin_aux(_ElementOID, <<>>, _OIDMap, _DecodeOptions, Acc) ->
+%%     lists:reverse(Acc);
+%% decode_array_bin_aux(ElementOID, <<-1:32/signed-integer, Rest/binary>>, OIDMap, DecodeOptions, Acc) ->
+%%     decode_array_bin_aux(ElementOID, Rest, OIDMap, DecodeOptions, [null | Acc]);
+%% decode_array_bin_aux(ElementOID, <<Size:32/signed-integer, Next/binary>>, OIDMap, DecodeOptions, Acc) ->
+%%     {ValueBin, Rest} = split_binary(Next, Size),
+%%     Value = decode_value_bin(ElementOID, ValueBin, OIDMap, DecodeOptions),
+%%     decode_array_bin_aux(ElementOID, Rest, OIDMap, DecodeOptions, [Value | Acc]).
 
-decode_numeric_bin(<<0:16/unsigned, _Weight:16, 16#C000:16/unsigned, 0:16/unsigned>>) -> 'NaN';
-decode_numeric_bin(<<Len:16/unsigned, Weight:16/signed, Sign:16/unsigned, DScale:16/unsigned, Tail/binary>>) when Sign =:= 16#0000 orelse Sign =:= 16#4000 ->
-    Len = byte_size(Tail) div 2,
-    {ValueInt, DecShift} = decode_numeric_bin0(Tail, Weight, 0),
-    ValueDec = decode_numeric_bin_scale(ValueInt, DecShift),
-    SignedDec = case Sign of
-        16#0000 -> ValueDec;
-        16#4000 -> -ValueDec
-    end,
-    % Convert to float if there are digits after the decimal point.
-    if
-        DScale > 0 andalso is_integer(SignedDec) -> SignedDec * 1.0;
-        true -> SignedDec
-    end.
+%% decode_numeric_bin(<<0:16/unsigned, _Weight:16, 16#C000:16/unsigned, 0:16/unsigned>>) -> 'NaN';
+%% decode_numeric_bin(<<Len:16/unsigned, Weight:16/signed, Sign:16/unsigned, DScale:16/unsigned, Tail/binary>>) when Sign =:= 16#0000 orelse Sign =:= 16#4000 ->
+%%     Len = byte_size(Tail) div 2,
+%%     {ValueInt, DecShift} = decode_numeric_bin0(Tail, Weight, 0),
+%%     ValueDec = decode_numeric_bin_scale(ValueInt, DecShift),
+%%     SignedDec = case Sign of
+%%         16#0000 -> ValueDec;
+%%         16#4000 -> -ValueDec
+%%     end,
+%%     % Convert to float if there are digits after the decimal point.
+%%     if
+%%         DScale > 0 andalso is_integer(SignedDec) -> SignedDec * 1.0;
+%%         true -> SignedDec
+%%     end.
 
--define(NBASE, 10000).
+%% -define(NBASE, 10000).
 
-decode_numeric_bin0(<<>>, Weight, Acc) -> {Acc, Weight};
-decode_numeric_bin0(<<Digit:16, Tail/binary>>, Weight, Acc) when Digit >= 0 andalso Digit < ?NBASE ->
-    NewAcc = (Acc * ?NBASE) + Digit,
-    decode_numeric_bin0(Tail, Weight - 1, NewAcc).
+%% decode_numeric_bin0(<<>>, Weight, Acc) -> {Acc, Weight};
+%% decode_numeric_bin0(<<Digit:16, Tail/binary>>, Weight, Acc) when Digit >= 0 andalso Digit < ?NBASE ->
+%%     NewAcc = (Acc * ?NBASE) + Digit,
+%%     decode_numeric_bin0(Tail, Weight - 1, NewAcc).
 
-decode_numeric_bin_scale(Value, -1) -> Value;
-decode_numeric_bin_scale(Value, DecShift) when DecShift < 0 ->
-    NewValue = Value / ?NBASE,
-    decode_numeric_bin_scale(NewValue, DecShift + 1);
-decode_numeric_bin_scale(Value, DecShift) when DecShift >= 0 ->
-    NewValue = Value * ?NBASE,
-    decode_numeric_bin_scale(NewValue, DecShift - 1).
+%% decode_numeric_bin_scale(Value, -1) -> Value;
+%% decode_numeric_bin_scale(Value, DecShift) when DecShift < 0 ->
+%%     NewValue = Value / ?NBASE,
+%%     decode_numeric_bin_scale(NewValue, DecShift + 1);
+%% decode_numeric_bin_scale(Value, DecShift) when DecShift >= 0 ->
+%%     NewValue = Value * ?NBASE,
+%%     decode_numeric_bin_scale(NewValue, DecShift - 1).
 
 decode_oid(Oid, Pool) ->
     case ets:lookup(Pool, Oid) of
@@ -1013,45 +1051,45 @@ decode_oid(Oid, Pool) ->
         [] -> Oid
     end.
 
-decode_time(<<Time:64/signed-integer>>, true, DecodeOptions) ->
-    Seconds = Time div 1000000,
-    USecs = Time rem 1000000,
-    decode_time0(Seconds, USecs, DecodeOptions);
-decode_time(<<Time:64/float>>, false, DecodeOptions) ->
-    Seconds = trunc(Time),
-    USecs = round((Time - Seconds) * 1000000),   % Maximum documented PostgreSQL precision is usec.
-    decode_time0(Seconds, USecs, DecodeOptions).
+%% decode_time(<<Time:64/signed-integer>>, true, DecodeOptions) ->
+%%     Seconds = Time div 1000000,
+%%     USecs = Time rem 1000000,
+%%     decode_time0(Seconds, USecs, DecodeOptions);
+%% decode_time(<<Time:64/float>>, false, DecodeOptions) ->
+%%     Seconds = trunc(Time),
+%%     USecs = round((Time - Seconds) * 1000000),   % Maximum documented PostgreSQL precision is usec.
+%%     decode_time0(Seconds, USecs, DecodeOptions).
 
-decode_time0(Seconds, USecs, DecodeOptions) ->
-    {Hour, Min, Secs0} = calendar:seconds_to_time(Seconds),
-    Secs1 = cast_datetime_usecs(Secs0, USecs, DecodeOptions),
-    {Hour, Min, Secs1}.
+%% decode_time0(Seconds, USecs, DecodeOptions) ->
+%%     {Hour, Min, Secs0} = calendar:seconds_to_time(Seconds),
+%%     Secs1 = cast_datetime_usecs(Secs0, USecs, DecodeOptions),
+%%     {Hour, Min, Secs1}.
 
-decode_time_tz(<<TimeBin:8/binary, TZ:32/signed-integer>>, IntegerDateTimes, DecodeOptions) ->
-    Decoded = decode_time(TimeBin, IntegerDateTimes, DecodeOptions),
-    adjust_time(Decoded, - (TZ div 60)).
+%% decode_time_tz(<<TimeBin:8/binary, TZ:32/signed-integer>>, IntegerDateTimes, DecodeOptions) ->
+%%     Decoded = decode_time(TimeBin, IntegerDateTimes, DecodeOptions),
+%%     adjust_time(Decoded, - (TZ div 60)).
 
-adjust_time(Time, 0) -> Time;
-adjust_time({Hour, Min, Secs}, TZDelta) when TZDelta > 0 ->
-    {(24 + Hour - (TZDelta div 60)) rem 24, (60 + Min - (TZDelta rem 60)) rem 60, Secs};
-adjust_time({Hour, Min, Secs}, TZDelta) ->
-    {(Hour - (TZDelta div 60)) rem 24, (Min - (TZDelta rem 60)) rem 60, Secs}.
+%% adjust_time(Time, 0) -> Time;
+%% adjust_time({Hour, Min, Secs}, TZDelta) when TZDelta > 0 ->
+%%     {(24 + Hour - (TZDelta div 60)) rem 24, (60 + Min - (TZDelta rem 60)) rem 60, Secs};
+%% adjust_time({Hour, Min, Secs}, TZDelta) ->
+%%     {(Hour - (TZDelta div 60)) rem 24, (Min - (TZDelta rem 60)) rem 60, Secs}.
 
-decode_timestamp(<<16#7FFFFFFFFFFFFFFF:64/signed-integer>>, true, _DecodeOptions) -> infinity;
-decode_timestamp(<<-16#8000000000000000:64/signed-integer>>, true, _DecodeOptions) -> '-infinity';
-decode_timestamp(<<127,240,0,0,0,0,0,0>>, false, _DecodeOptions) -> infinity;
-decode_timestamp(<<255,240,0,0,0,0,0,0>>, false, _DecodeOptions) -> '-infinity';
-decode_timestamp(<<Timestamp:64/signed-integer>>, true, DecodeOptions) ->
-    TimestampSecs = Timestamp div 1000000,
-    USecs = Timestamp rem 1000000,
-    decode_timestamp0(TimestampSecs, USecs, DecodeOptions);
-decode_timestamp(<<Timestamp:64/float>>, false, DecodeOptions) ->
-    TimestampSecs = trunc(Timestamp),
-    USecs = round((Timestamp - TimestampSecs) * 1000000), % Maximum documented PostgreSQL precision is usec.
-    decode_timestamp0(TimestampSecs, USecs, DecodeOptions).
+%% decode_timestamp(<<16#7FFFFFFFFFFFFFFF:64/signed-integer>>, true, _DecodeOptions) -> infinity;
+%% decode_timestamp(<<-16#8000000000000000:64/signed-integer>>, true, _DecodeOptions) -> '-infinity';
+%% decode_timestamp(<<127,240,0,0,0,0,0,0>>, false, _DecodeOptions) -> infinity;
+%% decode_timestamp(<<255,240,0,0,0,0,0,0>>, false, _DecodeOptions) -> '-infinity';
+%% decode_timestamp(<<Timestamp:64/signed-integer>>, true, DecodeOptions) ->
+%%     TimestampSecs = Timestamp div 1000000,
+%%     USecs = Timestamp rem 1000000,
+%%     decode_timestamp0(TimestampSecs, USecs, DecodeOptions);
+%% decode_timestamp(<<Timestamp:64/float>>, false, DecodeOptions) ->
+%%     TimestampSecs = trunc(Timestamp),
+%%     USecs = round((Timestamp - TimestampSecs) * 1000000), % Maximum documented PostgreSQL precision is usec.
+%%     decode_timestamp0(TimestampSecs, USecs, DecodeOptions).
 
-decode_timestamp0(Secs, USecs, DecodeOptions) ->
-    {Date, {Hour, Min, Secs0}} = calendar:gregorian_seconds_to_datetime(Secs + ?POSTGRESQL_GS_EPOCH),
-    Secs1 = cast_datetime_usecs(Secs0, USecs, DecodeOptions),
-    Time = {Hour, Min, Secs1},
-    {Date, Time}.
+%% decode_timestamp0(Secs, USecs, DecodeOptions) ->
+%%     {Date, {Hour, Min, Secs0}} = calendar:gregorian_seconds_to_datetime(Secs + ?POSTGRESQL_GS_EPOCH),
+%%     Secs1 = cast_datetime_usecs(Secs0, USecs, DecodeOptions),
+%%     Time = {Hour, Min, Secs1},
+%%     {Date, Time}.

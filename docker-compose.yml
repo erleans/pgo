@@ -1,11 +1,10 @@
-version: '3'
+version: '3.7'
 
 services:
   postgres:
-    image: postgres:9.6-alpine
+    image: circleci/postgres:11.3-alpine-ram
     environment:
       - POSTGRES_USER=test
       - POSTGRES_DB=test
-      - PGDATA=/var/lib/postgresql/data/pgdata
     ports:
       - 5432:5432

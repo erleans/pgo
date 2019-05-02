@@ -94,10 +94,11 @@ open(Pool, PoolConfig) ->
     case gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, false}]) of
         {ok, Socket} ->
             case setup(Socket, PoolConfig) of
-                ok ->
+                {ok, Parameters} ->
                     {ok, #conn{owner=self(),
                                pool=Pool,
                                socket=Socket,
+                               parameters=Parameters,
                                trace=TraceDefault,
                                queue=QueueDefault,
                                decode_opts=DefaultDecodeOpts}};
@@ -214,19 +215,23 @@ setup_authenticate_password(Socket, Password, Options) ->
     end.
 
 setup_finish(Socket, Options) ->
+    setup_finish(Socket, Options, #{}).
+
+setup_finish(Socket, Options, Parameters) ->
     case receive_message(Socket, []) of
-        {ok, #parameter_status{name = _Name, value = _Value}} ->
+        {ok, #parameter_status{name = Name, value = Value}} ->
             %% State1 = handle_parameter(Name, Value, sync, Options),
-            setup_finish(Socket, Options);
+            setup_finish(Socket, Options, Parameters#{Name => Value});
         {ok, #backend_key_data{procid = _ProcID, secret = _Secret}} ->
-            setup_finish(Socket, Options);
+            setup_finish(Socket, Options, Parameters);
         {ok, #ready_for_query{}} ->
-            ok;
+            {ok, Parameters};
         {ok, #error_response{fields = Fields}} ->
             {error, {pgo_error, Fields}};
         {ok, Message} ->
             {error, {unexpected_message, Message}};
-        {error, _} = ReceiveError -> ReceiveError
+        {error, _} = ReceiveError ->
+            ReceiveError
     end.
 
 % This function should always return true as set or reset may only fail because
@@ -265,11 +270,17 @@ extended_query(Conn=#conn{socket=Socket,
         {ok, SinglePacket, LoopState} ->
             case gen_tcp:send(Socket, SinglePacket) of
                 ok ->
-                    receive_loop(LoopState,
-                                 PerRowFun,
-                                 Acc0,
-                                 DecodeOptions,
-                                 Conn);
+                    try
+                        receive_loop(LoopState,
+                                     PerRowFun,
+                                     Acc0,
+                                     DecodeOptions,
+                                     Conn)
+                    catch
+                        _:_ ->
+                            %% return actual error
+                            flush_until_ready_for_query({error, decode}, Conn)
+                    end;
                 {error, _} = SendSinglePacketError ->
                     SendSinglePacketError
             end;
