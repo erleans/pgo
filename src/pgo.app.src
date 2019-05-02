@@ -7,7 +7,8 @@
    [kernel,
     stdlib,
     backoff,
-    telemetry
+    telemetry,
+    pg_types
    ]},
   {env,[]},
   {modules, []},
