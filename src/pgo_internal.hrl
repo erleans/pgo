@@ -8,6 +8,7 @@
                socket :: gen_tcp:socket() | ssl:sslsocket(),
                socket_module :: ssl | gen_tcp,
                pool :: atom(),
+               parameters :: map(),
                queue :: boolean(),
                trace :: boolean(),
                decode_opts :: []}).
@@ -116,6 +117,13 @@
 -define(REGCONFIGOID, 3734).
 -define(REGDICTIONARYOID, 3769).
 -define(INT4RANGEOID, 3904).
+-define(INT8RANGEOID, 3926).
+-define(NUMRANGEOID, 3906).
+-define(TSTZRANGEOID, 3910).
+-define(TSRANGEOID, 3908).
+-define(DATERANGEOID, 3912).
+-define(ANYRANGEOID, 3831).
+
 -define(RECORDOID, 2249).
 -define(RECORDARRAYOID, 2287).
 -define(CSTRINGOID, 2275).
@@ -130,7 +138,6 @@
 -define(ANYNONARRAYOID, 2776).
 -define(ANYENUMOID, 3500).
 -define(FDW_HANDLEROID, 3115).
--define(ANYRANGEOID, 3831).
 
 -define(PG_TYPE_H_TYPES_DICT, [
 {?BOOLOID, bool},
@@ -199,6 +206,11 @@
 {?REGCONFIGOID, regconfig},
 {?REGDICTIONARYOID, regdictionary},
 {?INT4RANGEOID, int4range},
+{?INT8RANGEOID, int8range},
+{?NUMRANGEOID, numrange},
+{?TSTZRANGEOID, tstzrange},
+{?DATERANGEOID, daterange},
+{?TSRANGEOID, tsrange},
 {?RECORDOID, record},
 {?RECORDARRAYOID, recordarray},
 {?CSTRINGOID, cstring},
@@ -295,6 +307,7 @@
 -record(row_description_field, {
     name :: iodata(),
     table_oid :: oid(),
+    type_info :: tuple(),
     attr_number :: integer(),
     data_type_oid :: oid(),
     data_type_size :: integer(),

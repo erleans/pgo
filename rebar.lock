@@ -1,5 +1,9 @@
 {"1.1.0",
 [{<<"backoff">>,{pkg,<<"backoff">>,<<"1.1.6">>},0},
+ {<<"pg_types">>,
+  {git,"https://github.com/tsloughter/pg_types.git",
+       {ref,"2713182864fa4e3a230d95f127e52967af9f70da"}},
+  0},
  {<<"telemetry">>,{pkg,<<"telemetry">>,<<"0.4.0">>},0}]}.
 [
 {pkg_hash,[
