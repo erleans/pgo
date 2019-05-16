@@ -222,6 +222,9 @@ numerics(_Config) ->
     ?assertMatch(#{rows := [{-1.0e-11}]}, pgo:query(BasicQuery, [-0.00000000001])),
     ?assertMatch(#{rows := [{1.0e-32}]}, pgo:query(BasicQuery, [1.0e-32])),
 
+    ?assertMatch(#{rows := [{1.0e-32}]}, pgo:query(BasicQuery, [<<"1.0e-32">>])),
+    ?assertMatch(#{rows := [{1.0e+32}]}, pgo:query(BasicQuery, [<<"1.0e+32">>])),
+
 
      #{command := create} = pgo:query("create table numeric_tmp (id integer primary key, a_int integer, a_num numeric,
                                       b_num numeric(5,3))"),
