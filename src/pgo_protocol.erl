@@ -256,21 +256,7 @@ parse_exp(<< Char:1/binary, Rest/binary>>) when Char =:= <<"e">> ->
             parse_digits(Rest, [])
     end;
 parse_exp(<<>>) ->
-    {[], <<>>};
-parse_exp(Bin) ->
-    case binary:first(Bin) of
-        "e" ->
-            Rest = binary:part(Bin, {1, byte_size(Bin) - 1 }),
-            case Rest of
-                <<Sign, Rest/binary>> when Sign =:= <<"+">> orelse Sign =:= <<"-">> ->
-                    {Digits, Rest} = parse_digits(Rest, []),
-                    {[Sign | Digits], Rest};
-                _ ->
-                    {[], Bin}
-            end;
-        _ ->
-            {[], Bin}
-    end.
+    {[], <<>>}.
 
 encode_digits(Coef, Digits) ->
     case Coef < 10000 of
