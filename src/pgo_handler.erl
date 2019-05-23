@@ -84,6 +84,9 @@ ping(Conn=#conn{socket=Socket,
 
 close(undefined) ->
     ok;
+close(#conn{socket=Socket,
+            socket_module=ssl}) ->
+    ssl:shutdown(Socket, read_write);
 close(#conn{socket=Socket}) ->
     unlink(Socket),
     exit(Socket, shutdown).
