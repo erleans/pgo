@@ -10,19 +10,49 @@
 -define(TXT_UUID, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>).
 
 all() ->
+    case os:getenv("CIRCLECI") of
+        false ->
+            [{group, clear}, {group, ssl}];
+        _ ->
+            [{group, clear}]
+    end.
+
+groups() ->
+    [{clear, [shuffle, parallel], cases()},
+     {ssl, [shuffle, parallel], cases()}].
+
+cases() ->
     [select, insert_update, text_types, rows_as_maps,
      json_jsonb, types, validate_telemetry, numerics].
 
 init_per_suite(Config) ->
+    Config.
+
+end_per_suite(_Config) ->
+    application:stop(pgo),
+    ok.
+
+init_per_group(clear, Config) ->
     application:ensure_all_started(pgo),
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
+                                             port => 5432,
+                                             database => "test",
+                                             user => "test"}),
+
+    Config;
+init_per_group(ssl, Config) ->
+    application:ensure_all_started(pgo),
+
+    {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
+                                             port => 5434,
+                                             ssl => true,
                                              database => "test",
                                              user => "test"}),
 
     Config.
 
-end_per_suite(_Config) ->
+end_per_group(_, _Config) ->
     pgo:query("drop table tmp"),
     pgo:query("drop table tmp_b"),
     pgo:query("drop table foo"),
@@ -42,7 +72,8 @@ validate_telemetry(_Config) ->
     receive
         {[pgo, query], Latency, #{query_time := QueryTime,
                                   pool := default}} ->
-            ?assertEqual(Latency, QueryTime)
+            ?assertEqual(Latency, QueryTime),
+            telemetry:detach(<<"send-query-time">>)
     after
         500 ->
             ct:fail(timeout)

@@ -12,6 +12,7 @@ jobs:
         environment:
           POSTGRES_USER: test
           POSTGRES_DB: test
+
     steps:
       - rebar3/install_ca_certs
       - checkout

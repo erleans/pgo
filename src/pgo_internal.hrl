@@ -5,7 +5,8 @@
 -endif.
 
 -record(conn, {owner :: pid(),
-               socket :: gen_tcp:socket(),
+               socket :: gen_tcp:socket() | ssl:sslsocket(),
+               socket_module :: ssl | gen_tcp,
                pool :: atom(),
                queue :: boolean(),
                trace :: boolean(),

@@ -77,12 +77,16 @@ extended_query(Socket=#conn{pool=Pool}, Query, Parameters, DecodeOptions, Timing
     Result.
 
 -spec ping(#conn{}) -> ok | {error, term()}.
-ping(Conn=#conn{socket=Socket}) ->
-    gen_tcp:send(Socket, pgo_protocol:encode_sync_message()),
+ping(Conn=#conn{socket=Socket,
+                socket_module=SocketModule}) ->
+    SocketModule:send(Socket, pgo_protocol:encode_sync_message()),
     flush_until_ready_for_query(ok, Conn).
 
 close(undefined) ->
     ok;
+close(#conn{socket=Socket,
+            socket_module=ssl}) ->
+    ssl:shutdown(Socket, read_write);
 close(#conn{socket=Socket}) ->
     unlink(Socket),
     exit(Socket, shutdown).
@@ -100,12 +104,16 @@ open(Pool, PoolConfig) ->
     case gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, false}]) of
         {ok, Socket} ->
             case setup(Socket, PoolConfig) of
-                ok ->
+                {ok, Socket1} ->
                     {ok, #conn{owner=self(),
                                pool=Pool,
-                               socket=Socket,
+                               socket=Socket1,
                                trace=TraceDefault,
                                queue=QueueDefault,
+                               socket_module=case maps:get(ssl, PoolConfig, undefined) of
+                                                 true -> ssl;
+                                                 _ ->    gen_tcp
+                                             end,
                                decode_opts=DefaultDecodeOpts}};
                 {error, _} = SetupError ->
                     SetupError
@@ -120,9 +128,9 @@ open(Pool, PoolConfig) ->
 setup(Socket, Options) ->
     case maps:get(ssl, Options, undefined) of
         false ->
-            setup_startup(Socket, Options);
+            setup_startup(gen_tcp, Socket, Options);
         undefined ->
-            setup_startup(Socket, Options);
+            setup_startup(gen_tcp, Socket, Options);
         true ->
             setup_ssl(Socket, Options)
     end.
@@ -137,7 +145,7 @@ setup_ssl(Socket, Options) ->
                     SSLOptions = maps:get(ssl_options, Options, []),
                     case ssl:connect(Socket, [binary, {packet, raw}, {active, false} | SSLOptions]) of
                         {ok, SSLSocket} ->
-                            setup_startup(SSLSocket, Options);
+                            setup_startup(ssl, SSLSocket, Options);
                         {error, _} = SSLConnectErr ->
                             SSLConnectErr
                     end;
@@ -149,7 +157,7 @@ setup_ssl(Socket, Options) ->
             SendSSLRequestError
     end.
 
-setup_startup(Socket, Options) ->
+setup_startup(SocketModule, Socket, Options) ->
     % Send startup packet connection packet.
     User = maps:get(user, Options, ?DEFAULT_USER),
     Database = maps:get(database, Options, User),
@@ -160,19 +168,19 @@ setup_startup(Socket, Options) ->
         pgo_protocol:encode_startup_message([{<<"user">>, User},
                                              {<<"database">>, Database}
                                              | ConnectionParams1]),
-    case gen_tcp:send(Socket, StartupMessage) of
+    case SocketModule:send(Socket, StartupMessage) of
         ok ->
-            case receive_message(Socket, []) of
+            case receive_message(SocketModule, Socket, []) of
                 {ok, #error_response{fields = Fields}} ->
                     {error, {pgo_error, Fields}};
                 {ok, #authentication_ok{}} ->
-                    setup_finish(Socket, Options);
+                    setup_finish(SocketModule, Socket, Options);
                 {ok, #authentication_kerberos_v5{}} ->
                     {error, {unimplemented, authentication_kerberos_v5}};
                 {ok, #authentication_cleartext_password{}} ->
-                    setup_authenticate_cleartext_password(Socket, Options);
+                    setup_authenticate_cleartext_password(SocketModule, Socket, Options);
                 {ok, #authentication_md5_password{salt = Salt}} ->
-                    setup_authenticate_md5_password(Socket, Salt, Options);
+                    setup_authenticate_md5_password(SocketModule, Socket, Salt, Options);
                 {ok, #authentication_scm_credential{}} ->
                     {error, {unimplemented, authentication_scm}};
                 {ok, #authentication_gss{}} ->
@@ -188,11 +196,11 @@ setup_startup(Socket, Options) ->
         {error, _} = SendError -> SendError
     end.
 
-setup_authenticate_cleartext_password(Socket, Options) ->
+setup_authenticate_cleartext_password(SocketModule, Socket, Options) ->
     Password = maps:get(password, Options, ?DEFAULT_PASSWORD),
-    setup_authenticate_password(Socket, Password, Options).
+    setup_authenticate_password(SocketModule, Socket, Password, Options).
 
-setup_authenticate_md5_password(Socket, Salt, Options) ->
+setup_authenticate_md5_password(SocketModule, Socket, Salt, Options) ->
     User = maps:get(user, Options, ?DEFAULT_USER),
     Password = maps:get(password, Options, ?DEFAULT_PASSWORD),
     % concat('md5', md5(concat(md5(concat(password, username)), random-salt)))
@@ -201,17 +209,17 @@ setup_authenticate_md5_password(Socket, Salt, Options) ->
     <<MD52Int:128>> = crypto:hash(md5, [MD51Hex, Salt]),
     MD52Hex = io_lib:format("~32.16.0b", [MD52Int]),
     MD5ChallengeResponse = ["md5", MD52Hex],
-    setup_authenticate_password(Socket, MD5ChallengeResponse, Options).
+    setup_authenticate_password(SocketModule, Socket, MD5ChallengeResponse, Options).
 
-setup_authenticate_password(Socket, Password, Options) ->
+setup_authenticate_password(SocketModule, Socket, Password, Options) ->
     Message = pgo_protocol:encode_password_message(Password),
-    case gen_tcp:send(Socket, Message) of
+    case SocketModule:send(Socket, Message) of
         ok ->
-            case receive_message(Socket, []) of
+            case receive_message(SocketModule, Socket, []) of
                 {ok, #error_response{fields = Fields}} ->
                     {error, {pgo_error, Fields}};
                 {ok, #authentication_ok{}} ->
-                    setup_finish(Socket, Options);
+                    setup_finish(SocketModule, Socket, Options);
                 {ok, UnexpectedMessage} ->
                     {error, {unexpected_message, UnexpectedMessage}};
                 {error, _} = ReceiveError -> ReceiveError
@@ -219,15 +227,15 @@ setup_authenticate_password(Socket, Password, Options) ->
         {error, _} = SendError -> SendError
     end.
 
-setup_finish(Socket, Options) ->
-    case receive_message(Socket, []) of
+setup_finish(SocketModule, Socket, Options) ->
+    case receive_message(SocketModule, Socket, []) of
         {ok, #parameter_status{name = _Name, value = _Value}} ->
             %% State1 = handle_parameter(Name, Value, sync, Options),
-            setup_finish(Socket, Options);
+            setup_finish(SocketModule, Socket, Options);
         {ok, #backend_key_data{procid = _ProcID, secret = _Secret}} ->
-            setup_finish(Socket, Options);
+            setup_finish(SocketModule, Socket, Options);
         {ok, #ready_for_query{}} ->
-            ok;
+            {ok, Socket};
         {ok, #error_response{fields = Fields}} ->
             {error, {pgo_error, Fields}};
         {ok, Message} ->
@@ -247,6 +255,7 @@ setup_finish(Socket, Options) ->
 %%     error:is_in_failed_sql_transaction(Error).
 
 extended_query(Conn=#conn{socket=Socket,
+                          socket_module=SocketModule,
                           pool=Pool}, Query, Parameters, DecodeOptions, PerRowFun, Acc0) ->
     put(query, Query),
     IntegerDateTimes = true,
@@ -269,7 +278,7 @@ extended_query(Conn=#conn{socket=Socket,
     end,
     case PacketT of
         {ok, SinglePacket, LoopState} ->
-            case gen_tcp:send(Socket, SinglePacket) of
+            case SocketModule:send(Socket, SinglePacket) of
                 ok ->
                     receive_loop(LoopState,
                                  PerRowFun,
@@ -305,8 +314,9 @@ encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, IntegerDateTi
 
 -spec receive_loop(extended_query_loop_state(), pgo:decode_fun(), list(), list(), pgo:conn())
                   -> pgo:result().
-receive_loop(LoopState, DecodeFun, Acc0, DecodeOptions, Conn=#conn{socket=Socket}) ->
-    case receive_message(Socket, DecodeOptions) of
+receive_loop(LoopState, DecodeFun, Acc0, DecodeOptions, Conn=#conn{socket=Socket,
+                                                                   socket_module=SocketModule}) ->
+    case receive_message(SocketModule, Socket, DecodeOptions) of
         {ok, Message} ->
             receive_loop0(Message, LoopState, DecodeFun, Acc0, DecodeOptions, Conn);
         {error, _} = ReceiveError ->
@@ -325,20 +335,22 @@ receive_loop0(#parse_complete{}, {parse_complete_with_params, Parameters}, Decod
     receive_loop({parameter_description_with_params, Parameters}, DecodeFun, Acc0, DecodeOptions, Conn);
 receive_loop0(#parameter_description{data_types=ParameterDataTypes},
               {parameter_description_with_params, Parameters}, DecodeFun,
-              Acc0, DecodeOptions, Conn=#conn{socket=Socket, pool=Pool}) ->
+              Acc0, DecodeOptions, Conn=#conn{socket=Socket,
+                                              socket_module=SocketModule,
+                                              pool=Pool}) ->
     pgo_query_cache:insert(Pool, get(query), ParameterDataTypes),
     oob_update_oid_map_if_required(Conn, ParameterDataTypes, DecodeOptions),
     PacketT = encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, true),
     case PacketT of
         {ok, SinglePacket} ->
-            case gen_tcp:send(Socket, SinglePacket) of
+            case SocketModule:send(Socket, SinglePacket) of
                 ok ->
                     receive_loop(pre_bind_row_description, DecodeFun, Acc0, DecodeOptions, Conn);
                 {error, _} = SendError ->
                     SendError
             end;
         {error, _} = Error ->
-            case gen_tcp:send(Socket, pgo_protocol:encode_sync_message()) of
+            case SocketModule:send(Socket, pgo_protocol:encode_sync_message()) of
                 ok -> flush_until_ready_for_query(Error, Conn);
                 {error, _} = SendSyncPacketError -> SendSyncPacketError
             end
@@ -379,7 +391,9 @@ receive_loop0(#command_complete{command_tag = Tag}, _LoopState, DecodeFun, Acc0,
 %%     end;
 receive_loop0(#ready_for_query{}, {result, Result}, _Fun, _Acc0, _DecodeOptions, __Socket) ->
     Result;
-receive_loop0(#error_response{fields = Fields}, LoopState, _Fun, _Acc0, _DecodeOptions, Conn=#conn{socket=Socket}) ->
+receive_loop0(#error_response{fields = Fields}, LoopState, _Fun, _Acc0, _DecodeOptions,
+              Conn=#conn{socket=Socket,
+                         socket_module=SocketModule}) ->
     Error = {error, {pgsql_error, Fields}},
     % We already sent a Sync except when we sent a Flush :-)
     % - when we asked for the statement description
@@ -391,7 +405,7 @@ receive_loop0(#error_response{fields = Fields}, LoopState, _Fun, _Acc0, _DecodeO
                end,
     case NeedSync of
         true ->
-            case gen_tcp:send(Socket, pgo_protocol:encode_sync_message()) of
+            case SocketModule:send(Socket, pgo_protocol:encode_sync_message()) of
                 ok -> flush_until_ready_for_query(Error, Conn);
                 {error, _} = SendSyncPacketError -> SendSyncPacketError
             end;
@@ -401,13 +415,15 @@ receive_loop0(#error_response{fields = Fields}, LoopState, _Fun, _Acc0, _DecodeO
 receive_loop0(#ready_for_query{} = Message, _LoopState, _Fun, _Acc0, _DecodeOptions, _Conn) ->
     Result = {error, {unexpected_message, Message}},
     Result;
-receive_loop0(Message, _LoopState, _Fun, _Acc0, _DecodeOptions, Conn=#conn{socket=Socket}) ->
-    gen_tcp:send(Socket, pgo_protocol:encode_sync_message()),
+receive_loop0(Message, _LoopState, _Fun, _Acc0, _DecodeOptions, Conn=#conn{socket=Socket,
+                                                                           socket_module=SocketModule}) ->
+    SocketModule:send(Socket, pgo_protocol:encode_sync_message()),
     Error = {error, {unexpected_message, Message}},
     flush_until_ready_for_query(Error, Conn).
 
-flush_until_ready_for_query(Result, Conn=#conn{socket=Socket}) ->
-    case receive_message(Socket, []) of
+flush_until_ready_for_query(Result, Conn=#conn{socket=Socket,
+                                               socket_module=SocketModule}) ->
+    case receive_message(SocketModule, Socket, []) of
         {ok, #parameter_status{name = _Name, value = _Value}} ->
             flush_until_ready_for_query(Result, Conn);
         {ok, #ready_for_query{}} ->
@@ -422,15 +438,15 @@ flush_until_ready_for_query(Result, Conn=#conn{socket=Socket}) ->
 %% @doc Receive a single packet (in passive mode). Notifications and
 %% notices are broadcast to subscribers.
 %%
-receive_message(Socket, DecodeOpts) ->
-    Result0 = case gen_tcp:recv(Socket, ?MESSAGE_HEADER_SIZE) of
+receive_message(SocketModule, Socket, DecodeOpts) ->
+    Result0 = case SocketModule:recv(Socket, ?MESSAGE_HEADER_SIZE) of
                   {ok, <<Code:8/integer, Size:32/integer>>} ->
                       Payload = Size - 4,
                       case Payload of
                           0 ->
                               pgo_protocol:decode_message(Code, <<>>, DecodeOpts);
                           _ ->
-                              case gen_tcp:recv(Socket, Payload) of
+                              case SocketModule:recv(Socket, Payload) of
                                   {ok, Rest} ->
                                       pgo_protocol:decode_message(Code, Rest, DecodeOpts);
                                   {error, _} = ErrorRecvPacket ->
@@ -442,9 +458,9 @@ receive_message(Socket, DecodeOpts) ->
               end,
     case Result0 of
         {ok, #notification_response{} = _Notification} ->
-            receive_message(Socket, DecodeOpts);
+            receive_message(SocketModule, Socket, DecodeOpts);
         {ok, #notice_response{} = _Notice} ->
-            receive_message(Socket, DecodeOpts);
+            receive_message(SocketModule, Socket, DecodeOpts);
         _ ->
             Result0
     end.
