@@ -78,14 +78,13 @@ extended_query(Socket=#conn{pool=Pool}, Query, Parameters, DecodeOptions, Timing
 
 -spec ping(#conn{}) -> ok | {error, term()}.
 ping(Conn=#conn{socket=Socket}) ->
-    gen_tcp:send(Socket, pgo_protocol:encode_sync_message()),
+    pgo_socket:send(Socket, pgo_protocol:encode_sync_message()),
     flush_until_ready_for_query(ok, Conn).
 
 close(undefined) ->
     ok;
 close(#conn{socket=Socket}) ->
-    unlink(Socket),
-    exit(Socket, shutdown).
+    pgo_socket:close(Socket).   
 
 %%--------------------------------------------------------------------
 %% @doc Actually open (or re-open) the connection.
@@ -104,6 +103,13 @@ open(Pool, PoolConfig) ->
                     {ok, #conn{owner=self(),
                                pool=Pool,
                                socket=Socket,
+                               trace=TraceDefault,
+                               queue=QueueDefault,
+                               decode_opts=DefaultDecodeOpts}};
+                {ok, SSLSocket} ->
+                     {ok, #conn{owner=self(),
+                               pool=Pool,
+                               socket=SSLSocket,
                                trace=TraceDefault,
                                queue=QueueDefault,
                                decode_opts=DefaultDecodeOpts}};
@@ -129,15 +135,18 @@ setup(Socket, Options) ->
 
 setup_ssl(Socket, Options) ->
     SSLRequestMessage = pgo_protocol:encode_ssl_request_message(),
-    case gen_tcp:send(Socket, SSLRequestMessage) of
+    case pgo_socket:send(Socket, SSLRequestMessage) of
         ok ->
-            case gen_tcp:recv(Socket, 1) of
+            case pgo_socket:recv(Socket, 1) of
                 {ok, <<$S>>} ->
                     % upgrade socket.
                     SSLOptions = maps:get(ssl_options, Options, []),
                     case ssl:connect(Socket, [binary, {packet, raw}, {active, false} | SSLOptions]) of
                         {ok, SSLSocket} ->
-                            setup_startup(SSLSocket, Options);
+                            case setup_startup(SSLSocket, Options) of
+                                ok -> {ok, SSLSocket};
+                                {error, Error} -> {error, Error}
+                            end;
                         {error, _} = SSLConnectErr ->
                             SSLConnectErr
                     end;
@@ -160,7 +169,7 @@ setup_startup(Socket, Options) ->
         pgo_protocol:encode_startup_message([{<<"user">>, User},
                                              {<<"database">>, Database}
                                              | ConnectionParams1]),
-    case gen_tcp:send(Socket, StartupMessage) of
+    case pgo_socket:send(Socket, StartupMessage) of
         ok ->
             case receive_message(Socket, []) of
                 {ok, #error_response{fields = Fields}} ->
@@ -205,7 +214,7 @@ setup_authenticate_md5_password(Socket, Salt, Options) ->
 
 setup_authenticate_password(Socket, Password, Options) ->
     Message = pgo_protocol:encode_password_message(Password),
-    case gen_tcp:send(Socket, Message) of
+    case pgo_socket:send(Socket, Message) of
         ok ->
             case receive_message(Socket, []) of
                 {ok, #error_response{fields = Fields}} ->
@@ -269,7 +278,7 @@ extended_query(Conn=#conn{socket=Socket,
     end,
     case PacketT of
         {ok, SinglePacket, LoopState} ->
-            case gen_tcp:send(Socket, SinglePacket) of
+            case pgo_socket:send(Socket, SinglePacket) of
                 ok ->
                     receive_loop(LoopState,
                                  PerRowFun,
@@ -331,14 +340,14 @@ receive_loop0(#parameter_description{data_types=ParameterDataTypes},
     PacketT = encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, true),
     case PacketT of
         {ok, SinglePacket} ->
-            case gen_tcp:send(Socket, SinglePacket) of
+            case pgo_socket:send(Socket, SinglePacket) of
                 ok ->
                     receive_loop(pre_bind_row_description, DecodeFun, Acc0, DecodeOptions, Conn);
                 {error, _} = SendError ->
                     SendError
             end;
         {error, _} = Error ->
-            case gen_tcp:send(Socket, pgo_protocol:encode_sync_message()) of
+            case pgo_socket:send(Socket, pgo_protocol:encode_sync_message()) of
                 ok -> flush_until_ready_for_query(Error, Conn);
                 {error, _} = SendSyncPacketError -> SendSyncPacketError
             end
@@ -372,7 +381,7 @@ receive_loop0(#command_complete{command_tag = Tag}, _LoopState, DecodeFun, Acc0,
 %%     ExecuteMessage = pgo_protocol:encode_execute_message("", 0),
 %%     FlushMessage = pgo_protocol:encode_flush_message(),
 %%     SinglePacket = [ExecuteMessage, FlushMessage],
-%%     case gen_tcp:send(S, SinglePacket) of
+%%     case pgo_socket:send(S, SinglePacket) of
 %%         ok -> receive_loop(LoopState, DecodeFun, Acc0, DecodeOptions, Conn);
 %%         {error, _} = SendSinglePacketError ->
 %%             SendSinglePacketError
@@ -391,7 +400,7 @@ receive_loop0(#error_response{fields = Fields}, LoopState, _Fun, _Acc0, _DecodeO
                end,
     case NeedSync of
         true ->
-            case gen_tcp:send(Socket, pgo_protocol:encode_sync_message()) of
+            case pgo_socket:send(Socket, pgo_protocol:encode_sync_message()) of
                 ok -> flush_until_ready_for_query(Error, Conn);
                 {error, _} = SendSyncPacketError -> SendSyncPacketError
             end;
@@ -402,7 +411,7 @@ receive_loop0(#ready_for_query{} = Message, _LoopState, _Fun, _Acc0, _DecodeOpti
     Result = {error, {unexpected_message, Message}},
     Result;
 receive_loop0(Message, _LoopState, _Fun, _Acc0, _DecodeOptions, Conn=#conn{socket=Socket}) ->
-    gen_tcp:send(Socket, pgo_protocol:encode_sync_message()),
+    pgo_socket:send(Socket, pgo_protocol:encode_sync_message()),
     Error = {error, {unexpected_message, Message}},
     flush_until_ready_for_query(Error, Conn).
 
@@ -423,14 +432,14 @@ flush_until_ready_for_query(Result, Conn=#conn{socket=Socket}) ->
 %% notices are broadcast to subscribers.
 %%
 receive_message(Socket, DecodeOpts) ->
-    Result0 = case gen_tcp:recv(Socket, ?MESSAGE_HEADER_SIZE) of
+    Result0 = case pgo_socket:recv(Socket, ?MESSAGE_HEADER_SIZE) of
                   {ok, <<Code:8/integer, Size:32/integer>>} ->
                       Payload = Size - 4,
                       case Payload of
                           0 ->
                               pgo_protocol:decode_message(Code, <<>>, DecodeOpts);
                           _ ->
-                              case gen_tcp:recv(Socket, Payload) of
+                              case pgo_socket:recv(Socket, Payload) of
                                   {ok, Rest} ->
                                       pgo_protocol:decode_message(Code, Rest, DecodeOpts);
                                   {error, _} = ErrorRecvPacket ->
