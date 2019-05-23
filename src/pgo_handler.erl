@@ -101,10 +101,10 @@ open(Pool, PoolConfig) ->
     case gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, false}]) of
         {ok, Socket} ->
             case setup(Socket, PoolConfig) of
-                ok ->
+                {ok, Socket1} ->
                     {ok, #conn{owner=self(),
                                pool=Pool,
-                               socket=Socket,
+                               socket=Socket1,
                                trace=TraceDefault,
                                queue=QueueDefault,
                                socket_module=case maps:get(ssl, PoolConfig, undefined) of
@@ -232,7 +232,7 @@ setup_finish(SocketModule, Socket, Options) ->
         {ok, #backend_key_data{procid = _ProcID, secret = _Secret}} ->
             setup_finish(SocketModule, Socket, Options);
         {ok, #ready_for_query{}} ->
-            ok;
+            {ok, Socket};
         {ok, #error_response{fields = Fields}} ->
             {error, {pgo_error, Fields}};
         {ok, Message} ->
