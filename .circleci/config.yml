@@ -12,6 +12,13 @@ jobs:
         environment:
           POSTGRES_USER: test
           POSTGRES_DB: test
+      - image: nimbustech/postgres-ssl:9.5
+        ports:
+        - 5434:5432
+        environment:
+          POSTGRES_USER: test
+          POSTGRES_DB: test
+
     steps:
       - rebar3/install_ca_certs
       - checkout
