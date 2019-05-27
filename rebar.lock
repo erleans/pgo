@@ -1,8 +1,8 @@
 {"1.1.0",
 [{<<"backoff">>,{pkg,<<"backoff">>,<<"1.1.6">>},0},
- {<<"telemetry">>,{pkg,<<"telemetry">>,<<"0.3.0">>},0}]}.
+ {<<"telemetry">>,{pkg,<<"telemetry">>,<<"0.4.0">>},0}]}.
 [
 {pkg_hash,[
  {<<"backoff">>, <<"83B72ED2108BA1EE8F7D1C22E0B4A00CFE3593A67DBC792799E8CCE9F42F796B">>},
- {<<"telemetry">>, <<"099A7F3CE31E4780F971B4630A3C22EC66D22208BC090FE33A2A3A6A67754A73">>}]}
+ {<<"telemetry">>, <<"8339BEE3FA8B91CB84D14C2935F8ECF399CCD87301AD6DA6B71C09553834B2AB">>}]}
 ].
