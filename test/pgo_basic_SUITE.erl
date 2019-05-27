@@ -18,7 +18,7 @@ all() ->
     end.
 
 groups() ->
-    [{clear, [shuffle, parallel], cases()},
+    [{clear, [], cases()},
      {ssl, [shuffle, parallel], cases()}].
 
 cases() ->
@@ -70,8 +70,8 @@ validate_telemetry(_Config) ->
     ?assertMatch(#{rows := [{null}]}, pgo:query("select null")),
 
     receive
-        {[pgo, query], Latency, #{query_time := QueryTime,
-                                  pool := default}} ->
+        {[pgo, query], #{latency := Latency}, #{query_time := QueryTime,
+                                                pool := default}} ->
             ?assertEqual(Latency, QueryTime),
             telemetry:detach(<<"send-query-time">>)
     after

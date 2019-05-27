@@ -70,10 +70,10 @@ extended_query(Socket=#conn{pool=Pool}, Query, Parameters, DecodeOptions, Timing
     DecodeFun = proplists:get_value(decode_fun, DecodeOptions, undefined),
     Result = extended_query(Socket, Query, Parameters, DecodeOptions, DecodeFun, []),
     Latency = erlang:monotonic_time() - Start,
-    telemetry:execute([pgo, query], Latency, Timings#{pool => Pool,
-                                                      query => Query,
-                                                      query_time => Latency,
-                                                      result => Result}),
+    telemetry:execute([pgo, query], #{latency => Latency}, Timings#{pool => Pool,
+                                                                    query => Query,
+                                                                    query_time => Latency,
+                                                                    result => Result}),
     Result.
 
 -spec ping(#conn{}) -> ok | {error, term()}.
