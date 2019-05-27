@@ -10,12 +10,7 @@
 -define(TXT_UUID, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>).
 
 all() ->
-    case os:getenv("CIRCLECI") of
-        false ->
-            [{group, clear}, {group, ssl}];
-        _ ->
-            [{group, clear}]
-    end.
+    [{group, clear}, {group, ssl}].
 
 groups() ->
     [{clear, [], cases()},
