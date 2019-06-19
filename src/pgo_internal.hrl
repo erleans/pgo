@@ -306,6 +306,7 @@
 -record(row_description_field, {
     name :: iodata(),
     table_oid :: oid(),
+    module_type_info :: {module(), tuple()},
     attr_number :: integer(),
     data_type_oid :: oid(),
     data_type_size :: integer(),

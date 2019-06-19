@@ -73,23 +73,22 @@ load(Pool, LastReload, RequestTime, PoolConfig) when LastReload < RequestTime ->
 load(_, _, _, _) ->
     ok.
 
--define(BOOTSTRAP_QUERY, ["SELECT oid, typname, typsend::text, typreceive::text,"
-                          "typoutput::text, typinput::text, typelem FROM pg_type"]).
+-define(BOOTSTRAP_QUERY, ["SELECT oid, typname, typsend, typreceive,"
+                          "typoutput, typinput, typelem FROM pg_type"]).
 
 load_and_update_types(Conn, Pool) ->
     try
-        #{rows := Oids} = pgo_handler:extended_query(Conn, ?BOOTSTRAP_QUERY, [],
-                                                     [no_reload_types], #{queue_time => undefined}),
-        [ets:insert(Pool, #type_info{oid=Oid,
-                                     name=binary:copy(Name),
-                                     typsend=binary:copy(Send),
-                                     typreceive=binary:copy(Receive),
-                                     output=binary:copy(Output),
-                                     input=binary:copy(Input),
-                                     array_elem=ArrayOid})
-         || {Oid, Name, Send, Receive, Output, Input, ArrayOid} <- Oids]
+        {ok, Oids} = pgo_handler:simple_query(Conn, ?BOOTSTRAP_QUERY),
+        [true = ets:insert(Pool, #type_info{oid=binary_to_integer(Oid),
+                                            name=binary:copy(Name),
+                                            typsend=binary:copy(Send),
+                                            typreceive=binary:copy(Receive),
+                                            output=binary:copy(Output),
+                                            input=binary:copy(Input),
+                                            array_elem=binary_to_integer(ArrayOid)})
+         || [Oid, Name, Send, Receive, Output, Input, ArrayOid] <- Oids]
     catch
-        _:_ ->
+        _:_:_ ->
             failed
     after
         pgo_handler:close(Conn)
