@@ -158,7 +158,7 @@ setup_startup(Socket, Pool, Options) ->
                                              | ConnectionParams1]),
     case gen_tcp:send(Socket, StartupMessage) of
         ok ->
-            case receive_message(Socket, Pool, [no_reload_types]) of
+            case receive_message(Socket, Pool, []) of
                 {ok, #error_response{fields = Fields}} ->
                     {error, {pgo_error, Fields}};
                 {ok, #authentication_ok{}} ->
@@ -203,7 +203,7 @@ setup_authenticate_password(Socket, Password, Pool, Options) ->
     Message = pgo_protocol:encode_password_message(Password),
     case gen_tcp:send(Socket, Message) of
         ok ->
-            case receive_message(Socket, Pool, [no_reload_types]) of
+            case receive_message(Socket, Pool, []) of
                 {ok, #error_response{fields = Fields}} ->
                     {error, {pgo_error, Fields}};
                 {ok, #authentication_ok{}} ->
@@ -219,9 +219,8 @@ setup_finish(Socket, Pool, Options) ->
     setup_finish(Socket, Pool, Options, #{}).
 
 setup_finish(Socket, Pool, Options, Parameters) ->
-    case receive_message(Socket, Pool, [no_reload_types]) of
+    case receive_message(Socket, Pool, []) of
         {ok, #parameter_status{name = Name, value = Value}} ->
-            %% State1 = handle_parameter(Name, Value, sync, Options),
             setup_finish(Socket, Options, Pool, Parameters#{Name => Value});
         {ok, #backend_key_data{procid = _ProcID, secret = _Secret}} ->
             setup_finish(Socket, Options, Pool, Parameters);
@@ -334,7 +333,7 @@ receive_loop0(#parameter_description{data_types=ParameterDataTypes},
               {parameter_description_with_params, Parameters}, DecodeFun,
               Acc0, DecodeOptions, Conn=#conn{socket=Socket, pool=Pool}) ->
     pgo_query_cache:insert(Pool, get(query), ParameterDataTypes),
-    oob_update_oid_map_if_required(Conn, ParameterDataTypes, DecodeOptions),
+    %% oob_update_oid_map_if_required(Conn, ParameterDataTypes, DecodeOptions),
     PacketT = encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, true),
     case PacketT of
         {ok, SinglePacket} ->
@@ -361,7 +360,7 @@ receive_loop0(#bind_complete{}, bind_complete, DecodeFun, Acc0, DecodeOptions, C
 receive_loop0(#no_data{}, row_description, DecodeFun, Acc0, DecodeOptions, Conn) ->
     receive_loop(no_data, DecodeFun, Acc0, DecodeOptions, Conn);
 receive_loop0(#row_description{fields = Fields}, row_description, DecodeFun, Acc0, DecodeOptions, Conn) ->
-    oob_update_oid_map_from_fields_if_required(Conn, Fields, DecodeOptions),
+    %% oob_update_oid_map_from_fields_if_required(Conn, Fields, DecodeOptions),
     receive_loop({rows, Fields}, DecodeFun, Acc0, DecodeOptions, Conn);
 receive_loop0(#data_row{values = Values}, {rows, Fields} = LoopState, undefined=DecodeFun,
               Acc0, DecodeOptions, Conn=#conn{pool=Pool}) ->
@@ -414,7 +413,7 @@ receive_loop0(Message, _LoopState, _Fun, _Acc0, _DecodeOptions, Conn=#conn{socke
     flush_until_ready_for_query(Error, Conn).
 
 flush_until_ready_for_query(Result, Conn=#conn{socket=Socket}) ->
-    case receive_message(Socket, Conn, [no_reload_types]) of
+    case receive_message(Socket, Conn, []) of
         {ok, #parameter_status{name = _Name, value = _Value}} ->
             flush_until_ready_for_query(Result, Conn);
         {ok, #ready_for_query{}} ->
@@ -506,36 +505,29 @@ decode_object(Object) ->
 %%--------------------------------------------------------------------
 %% @doc Update the OID Map out of band, opening a new connection.
 %%
-oob_update_oid_map_from_fields_if_required(Conn, Fields, DecodeOptions) ->
-    case proplists:get_bool(no_reload_types, DecodeOptions) of
-        false ->
-            ct:pal("reLOAD ~p", [Fields]),
-            OIDs = [OID || #row_description_field{data_type_oid = OID} <- Fields],
-            oob_update_oid_map_if_required(Conn, OIDs, DecodeOptions);
-        true ->
-            ok
-    end.
+%% oob_update_oid_map_from_fields_if_required(Conn, Fields, DecodeOptions) ->
+%%     case proplists:get_bool(no_reload_types, DecodeOptions) of
+%%         false ->
+%%             OIDs = [OID || #row_description_field{data_type_oid = OID} <- Fields],
+%%             oob_update_oid_map_if_required(Conn, OIDs, DecodeOptions);
+%%         true ->
+%%             ok
+%%     end.
 
-oob_update_oid_map_if_required(Conn=#conn{pool=Pool}, OIDs, DecodeOptions) ->
-    case not proplists:get_bool(no_reload_types, DecodeOptions)
-        andalso lists:any(fun(OID) ->
-                                  not ets:member(Pool, OID)
-                          end, OIDs) of
-        true ->
-            ct:pal("reLOAD TYPES ~p", [OIDs]),
-            pgo_connection:reload_types(Conn);
-        false ->
-            ok
-    end.
+%% oob_update_oid_map_if_required(Conn=#conn{pool=Pool}, OIDs, DecodeOptions) ->
+%%     case not proplists:get_bool(no_reload_types, DecodeOptions)
+%%         andalso lists:any(fun(OID) ->
+%%                                   not ets:member(Pool, OID)
+%%                           end, OIDs) of
+%%         true ->
+%%             pgo_connection:reload_types(Conn);
+%%         false ->
+%%             ok
+%%     end.
 
-%% for type server
+%% only for the type server
 
 simple_query(Conn=#conn{socket=Socket}, Query) ->
-    %% Queries = [
-    %%            io_lib:format("set statement_timeout = ~B", [5000]),
-    %%            Query,
-    %%            "set statement_timeout to default"],
-    %% SinglePacket = [pgo_protocol:encode_query_message(AQuery) || AQuery <- Queries],
     case gen_tcp:send(Socket, pgo_protocol:encode_query_message(Query)) of
         ok ->
             simple_query_loop(Conn, []);
@@ -557,42 +549,17 @@ simple_query(Conn=#conn{socket=Socket}, Query) ->
 
 simple_query_loop(#conn{socket=Socket}=Conn, Acc) ->
     case simple_receive_message(Socket, Conn, []) of
-        {ok, #parameter_status{name = _Name, value = _Value}} ->
-            io:format("Param ~p~n", [_Name]),
-            %% State1 = handle_parameter(Name, Value, AsyncT, State0),
+        {ok, #row_description{}} ->
             simple_query_loop(Conn, Acc);
-        {ok, #row_description{fields = Fields}} ->
-            %% State1 = oob_update_oid_map_from_fields_if_required(Fields, State0),
-            simple_query_loop(Conn, Acc);
-        {ok, #data_row{values = Values}} %% when is_tuple(Result0) andalso element(1, Result0) =:= rows
-                                              ->
-            %% {rows, Fields, AccRows0} = Result0,
-            %% DecodedRow = pgo_protocol:decode_row(Fields, Values, State0#state.oidmap, [{integer_datetimes, State0#state.integer_datetimes} | QueryOptions]),
-            %% AccRows1 = [DecodedRow | AccRows0],
+        {ok, #data_row{values = Values}} ->
             simple_query_loop(Conn, [Values | Acc]);
-        {ok, #command_complete{command_tag = Tag}} ->
-            %% ResultRows = case Result0 of
-            %%     {rows, _Descs, AccRows} -> lists:reverse(AccRows);
-            %%     {copy, _Descs, AccData} -> lists:reverse(AccData);
-            %%     [] -> []
-            %% end,
-            %% DecodedTag = decode_tag(Tag),
-            %% Result = case proplists:get_bool(return_descriptions, QueryOptions) of
-            %%     true when is_tuple(Result0) -> {DecodedTag, element(2, Result0), ResultRows};
-            %%     true when Result0 =:= [] -> {DecodedTag, [], []};
-            %%     false -> {DecodedTag, ResultRows}
-            %% end,
-            %% Acc1 = [Result | Acc],
-            io:format("Tag ~p~n", [Tag]),
+        {ok, #command_complete{command_tag=_Tag}} ->
             simple_query_loop(Conn, Acc);
         {ok, #empty_query_response{}} ->
-            io:format("Empty~n"),
             simple_query_loop(Conn, Acc);
         {ok, #error_response{fields = Fields}} ->
-            io:format("ERROR ~p~n", [Fields]),
             Error = {error, {pgsql_error, Fields}},
-            Acc1 = [Error | Acc],
-            simple_query_loop(Conn, Acc1);
+            simple_query_loop(Conn, Error);
         {ok, #ready_for_query{}} ->
             {ok, Acc};
         {ok, Message} ->
@@ -601,76 +568,26 @@ simple_query_loop(#conn{socket=Socket}=Conn, Acc) ->
             ReceiveError
     end.
 
-simple_receive_message(Socket, Conn, DecodeOpts) ->
-    Result0 = case gen_tcp:recv(Socket, ?MESSAGE_HEADER_SIZE) of
-                  {ok, <<Code:8/integer, Size:32/integer>>} ->
-                      Payload = Size - 4,
-                      case Payload of
-                          0 ->
-                              [];
-                          _ ->
-                              case gen_tcp:recv(Socket, Payload) of
-                                  {ok, Rest} ->
-                                      case Code of
-                                          $T ->
-                                              simple_decode_message(Rest, Conn, DecodeOpts);
-                                          $D ->
-                                              decode_data_row_message(Rest);
-                                          $C ->
-                                              decode_command_complete_message(Rest);
-                                          $Z ->
-                                              decode_ready_for_query_message(Rest)
-                                      end;
-                                  {error, _} = ErrorRecvPacket ->
-                                      ErrorRecvPacket
-                              end
-                      end;
-                  {error, _} = ErrorRecvPacketHeader ->
-                      ErrorRecvPacketHeader
-              end,
-    case Result0 of
-        {ok, #notification_response{} = _Notification} ->
-            simple_receive_message(Socket, Conn, DecodeOpts);
-        {ok, #notice_response{} = _Notice} ->
-            simple_receive_message(Socket, Conn, DecodeOpts);
-        _ ->
-            Result0
-    end.
-
-simple_decode_message(<<Count:16/integer, Rest/binary>> = Payload, Pool, DecodeOpts) when Count >= 0 ->
-    case simple_decode_message0(Count, Rest, Pool, DecodeOpts, []) of
-        {ok, Fields} ->
-            {ok, #row_description{count = Count, fields = Fields}};
-        {error, _} ->
-            {error, {unknown_message, row_description, Payload}}
-    end;
-simple_decode_message(Payload, _, _) ->
-    {error, {unknown_message, row_description, Payload}}.
-
-simple_decode_message0(0, <<>>, _Conn, _DecodeOpts, Acc) ->
-    {ok, lists:reverse(Acc)};
-simple_decode_message0(Count, Binary, Conn, DecodeOpts, Acc) ->
-    case decode_string(Binary) of
-        {ok, FieldName, <<TableOid:32/integer, AttrNum:16/integer, DataTypeOid:32/integer,
-                          DataTypeSize:16/integer, TypeModifier:32/integer, _FormatCode:16/integer,
-                          Tail/binary>>} ->
-            simple_decode_message0(Count - 1, Tail, Conn, DecodeOpts,
-                                   [#row_description_field{name=FieldName,
-                                                           table_oid = TableOid,
-                                                           attr_number = AttrNum,
-                                                           data_type_oid = DataTypeOid,
-                                                           data_type_size = DataTypeSize,
-                                                           type_modifier = TypeModifier} | Acc]);
-        Error ->
-            Error
-    end.
-
-decode_string(Binary) ->
-    case binary:match(Binary, <<0>>) of
-        nomatch -> {error, not_null_terminated};
-        {Position, 1} ->
-            {String, <<0, Rest/binary>>} = split_binary(Binary, Position),
-            {ok, String, Rest}
+simple_receive_message(Socket, _Conn, _DecodeOpts) ->
+    case gen_tcp:recv(Socket, ?MESSAGE_HEADER_SIZE) of
+        {ok, <<Code:8/integer, Size:32/integer>>} ->
+            case gen_tcp:recv(Socket, Size - 4) of
+                {ok, Rest} ->
+                    case Code of
+                        $T ->
+                            {ok, #row_description{}};
+                        $D ->
+                            decode_data_row_message(Rest);
+                        $C ->
+                            {ok, #command_complete{}};
+                        $Z ->
+                            decode_ready_for_query_message(Rest)
+                    end;
+                {error, _} = ErrorRecvPacket ->
+                    ErrorRecvPacket
+            end;
+        {error, _} = ErrorRecvPacketHeader ->
+            ErrorRecvPacketHeader
     end.
 
 decode_data_row_message(<<N:16/integer, Rest/binary>> = Payload) ->
@@ -692,12 +609,6 @@ decode_data_row_values0(<<-1:32/signed-integer, Rest/binary>>, N, Acc) when N > 
 decode_data_row_values0(<<ValueLen:32/integer, ValueBin:ValueLen/binary, Rest/binary>>, N, Acc) when N > 0 ->
     decode_data_row_values0(Rest, N - 1, [ValueBin | Acc]);
 decode_data_row_values0(<<_/binary>>, _N, _Acc) -> {error, invalid_value_len}.
-
-decode_command_complete_message(Payload) ->
-    case decode_string(Payload) of
-        {ok, String, <<>>} -> {ok, #command_complete{command_tag = String}};
-        _ -> {error, {unknown_message, command_complete, Payload}}
-    end.
 
 decode_ready_for_query_message(<<$I>>) ->
     {ok, #ready_for_query{transaction_status=idle}};

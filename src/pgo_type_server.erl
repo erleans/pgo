@@ -9,6 +9,7 @@
          ready/3,
          terminate/3]).
 
+-include("pgo_internal.hrl").
 -include_lib("pg_datatypes/include/pg_datatypes.hrl").
 
 -record(data, {pool        :: atom(),
@@ -61,9 +62,9 @@ terminate(_, _, #data{pool=Pool}) ->
 
 load(Pool, LastReload, RequestTime, PoolConfig) when LastReload < RequestTime ->
     try pgo_handler:open(Pool, PoolConfig) of
-        {ok, Conn} ->
-            load_and_update_types(Conn, Pool),
-            pg_datatypes:update(Pool);
+        {ok, Conn=#conn{parameters=Parameters}} ->
+            Oids = load_and_update_types(Conn),
+            pg_datatypes:update(Pool, Oids, Parameters);
         {error, _} ->
             failed
     catch
@@ -76,16 +77,16 @@ load(_, _, _, _) ->
 -define(BOOTSTRAP_QUERY, ["SELECT oid, typname, typsend, typreceive,"
                           "typoutput, typinput, typelem FROM pg_type"]).
 
-load_and_update_types(Conn, Pool) ->
+load_and_update_types(Conn) ->
     try
         {ok, Oids} = pgo_handler:simple_query(Conn, ?BOOTSTRAP_QUERY),
-        [true = ets:insert(Pool, #type_info{oid=binary_to_integer(Oid),
-                                            name=binary:copy(Name),
-                                            typsend=binary:copy(Send),
-                                            typreceive=binary:copy(Receive),
-                                            output=binary:copy(Output),
-                                            input=binary:copy(Input),
-                                            array_elem=binary_to_integer(ArrayOid)})
+        [#type_info{oid=binary_to_integer(Oid),
+                    name=binary:copy(Name),
+                    typsend=binary:copy(Send),
+                    typreceive=binary:copy(Receive),
+                    output=binary:copy(Output),
+                    input=binary:copy(Input),
+                    array_elem=binary_to_integer(ArrayOid)}
          || [Oid, Name, Send, Receive, Output, Input, ArrayOid] <- Oids]
     catch
         _:_:_ ->

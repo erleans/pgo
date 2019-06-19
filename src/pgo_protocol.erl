@@ -343,104 +343,104 @@ encode_parameter(Parameter, Oid, OidMap, _) ->
 %%     {ok, [Int], _} = io_lib:fread("~16u", Hex),
 %%     <<16:1/big-signed-unit:32, Int:128>>.
 
-array_type_to_element_type(undefined, _OIDMap) -> undefined;
-array_type_to_element_type(?CIDRARRAYOID, _OIDMap) -> ?CIDROID;
-array_type_to_element_type(?UUIDARRAYOID, _OIDMap) -> ?UUIDOID;
-array_type_to_element_type(?JSONBOID, _OIDMap) -> ?JSONBOID;
-array_type_to_element_type(?JSONOID, _OIDMap) -> ?JSONOID;
-array_type_to_element_type(?BOOLARRAYOID, _OIDMap) -> ?BOOLOID;
-array_type_to_element_type(?BYTEAARRAYOID, _OIDMap) -> ?BYTEAOID;
-array_type_to_element_type(?CHARARRAYOID, _OIDMap) -> ?CHAROID;
-array_type_to_element_type(?NAMEARRAYOID, _OIDMap) -> ?NAMEOID;
-array_type_to_element_type(?INT2ARRAYOID, _OIDMap) -> ?INT2OID;
-array_type_to_element_type(?INT2VECTORARRAYOID, _OIDMap) -> ?INT2VECTOROID;
-array_type_to_element_type(?INT4ARRAYOID, _OIDMap) -> ?INT4OID;
-array_type_to_element_type(?REGPROCARRAYOID, _OIDMap) -> ?REGPROCOID;
-array_type_to_element_type(?TEXTARRAYOID, _OIDMap) -> ?TEXTOID;
-array_type_to_element_type(?TIDARRAYOID, _OIDMap) -> ?TIDOID;
-array_type_to_element_type(?XIDARRAYOID, _OIDMap) -> ?XIDOID;
-array_type_to_element_type(?CIDARRAYOID, _OIDMap) -> ?CIDOID;
-array_type_to_element_type(?OIDVECTORARRAYOID, _OIDMap) -> ?OIDVECTOROID;
-array_type_to_element_type(?BPCHARARRAYOID, _OIDMap) -> ?BPCHAROID;
-array_type_to_element_type(?VARCHARARRAYOID, _OIDMap) -> ?VARCHAROID;
-array_type_to_element_type(?INT8ARRAYOID, _OIDMap) -> ?INT8OID;
-array_type_to_element_type(?POINTARRAYOID, _OIDMap) -> ?POINTOID;
-array_type_to_element_type(?LSEGARRAYOID, _OIDMap) -> ?LSEGOID;
-array_type_to_element_type(?PATHARRAYOID, _OIDMap) -> ?PATHOID;
-array_type_to_element_type(?BOXARRAYOID, _OIDMap) -> ?BOXOID;
-array_type_to_element_type(?FLOAT4ARRAYOID, _OIDMap) -> ?FLOAT4OID;
-array_type_to_element_type(?FLOAT8ARRAYOID, _OIDMap) -> ?FLOAT8OID;
-array_type_to_element_type(?ABSTIMEARRAYOID, _OIDMap) -> ?ABSTIMEOID;
-array_type_to_element_type(?RELTIMEARRAYOID, _OIDMap) -> ?RELTIMEOID;
-array_type_to_element_type(?TINTERVALARRAYOID, _OIDMap) -> ?TINTERVALOID;
-array_type_to_element_type(?POLYGONARRAYOID, _OIDMap) -> ?POLYGONOID;
-array_type_to_element_type(?OIDARRAYOID, _OIDMap) -> ?OIDOID;
-array_type_to_element_type(?ACLITEMARRAYOID, _OIDMap) -> ?ACLITEMOID;
-array_type_to_element_type(?MACADDRARRAYOID, _OIDMap) -> ?MACADDROID;
-array_type_to_element_type(?INETARRAYOID, _OIDMap) -> ?INETOID;
-array_type_to_element_type(?CSTRINGARRAYOID, _OIDMap) -> ?CSTRINGOID;
-array_type_to_element_type(TypeOID, OIDMap) ->
-    Type = decode_oid(TypeOID, OIDMap),
-    if not is_atom(Type) -> undefined;
-        true ->
-            case atom_to_list(Type) of
-                [$_ | ContentType] -> % Array
-                    OIDContentType = type_to_oid(list_to_atom(ContentType), OIDMap),
-                    OIDContentType;
-                _ -> undefined
-            end
-    end.
+%% array_type_to_element_type(undefined, _OIDMap) -> undefined;
+%% array_type_to_element_type(?CIDRARRAYOID, _OIDMap) -> ?CIDROID;
+%% array_type_to_element_type(?UUIDARRAYOID, _OIDMap) -> ?UUIDOID;
+%% array_type_to_element_type(?JSONBOID, _OIDMap) -> ?JSONBOID;
+%% array_type_to_element_type(?JSONOID, _OIDMap) -> ?JSONOID;
+%% array_type_to_element_type(?BOOLARRAYOID, _OIDMap) -> ?BOOLOID;
+%% array_type_to_element_type(?BYTEAARRAYOID, _OIDMap) -> ?BYTEAOID;
+%% array_type_to_element_type(?CHARARRAYOID, _OIDMap) -> ?CHAROID;
+%% array_type_to_element_type(?NAMEARRAYOID, _OIDMap) -> ?NAMEOID;
+%% array_type_to_element_type(?INT2ARRAYOID, _OIDMap) -> ?INT2OID;
+%% array_type_to_element_type(?INT2VECTORARRAYOID, _OIDMap) -> ?INT2VECTOROID;
+%% array_type_to_element_type(?INT4ARRAYOID, _OIDMap) -> ?INT4OID;
+%% array_type_to_element_type(?REGPROCARRAYOID, _OIDMap) -> ?REGPROCOID;
+%% array_type_to_element_type(?TEXTARRAYOID, _OIDMap) -> ?TEXTOID;
+%% array_type_to_element_type(?TIDARRAYOID, _OIDMap) -> ?TIDOID;
+%% array_type_to_element_type(?XIDARRAYOID, _OIDMap) -> ?XIDOID;
+%% array_type_to_element_type(?CIDARRAYOID, _OIDMap) -> ?CIDOID;
+%% array_type_to_element_type(?OIDVECTORARRAYOID, _OIDMap) -> ?OIDVECTOROID;
+%% array_type_to_element_type(?BPCHARARRAYOID, _OIDMap) -> ?BPCHAROID;
+%% array_type_to_element_type(?VARCHARARRAYOID, _OIDMap) -> ?VARCHAROID;
+%% array_type_to_element_type(?INT8ARRAYOID, _OIDMap) -> ?INT8OID;
+%% array_type_to_element_type(?POINTARRAYOID, _OIDMap) -> ?POINTOID;
+%% array_type_to_element_type(?LSEGARRAYOID, _OIDMap) -> ?LSEGOID;
+%% array_type_to_element_type(?PATHARRAYOID, _OIDMap) -> ?PATHOID;
+%% array_type_to_element_type(?BOXARRAYOID, _OIDMap) -> ?BOXOID;
+%% array_type_to_element_type(?FLOAT4ARRAYOID, _OIDMap) -> ?FLOAT4OID;
+%% array_type_to_element_type(?FLOAT8ARRAYOID, _OIDMap) -> ?FLOAT8OID;
+%% array_type_to_element_type(?ABSTIMEARRAYOID, _OIDMap) -> ?ABSTIMEOID;
+%% array_type_to_element_type(?RELTIMEARRAYOID, _OIDMap) -> ?RELTIMEOID;
+%% array_type_to_element_type(?TINTERVALARRAYOID, _OIDMap) -> ?TINTERVALOID;
+%% array_type_to_element_type(?POLYGONARRAYOID, _OIDMap) -> ?POLYGONOID;
+%% array_type_to_element_type(?OIDARRAYOID, _OIDMap) -> ?OIDOID;
+%% array_type_to_element_type(?ACLITEMARRAYOID, _OIDMap) -> ?ACLITEMOID;
+%% array_type_to_element_type(?MACADDRARRAYOID, _OIDMap) -> ?MACADDROID;
+%% array_type_to_element_type(?INETARRAYOID, _OIDMap) -> ?INETOID;
+%% array_type_to_element_type(?CSTRINGARRAYOID, _OIDMap) -> ?CSTRINGOID;
+%% array_type_to_element_type(TypeOID, OIDMap) ->
+%%     Type = decode_oid(TypeOID, OIDMap),
+%%     if not is_atom(Type) -> undefined;
+%%         true ->
+%%             case atom_to_list(Type) of
+%%                 [$_ | ContentType] -> % Array
+%%                     OIDContentType = type_to_oid(list_to_atom(ContentType), OIDMap),
+%%                     OIDContentType;
+%%                 _ -> undefined
+%%             end
+%%     end.
 
-encode_array_elements([{array, SubArray} | Tail], ElementType, OIDMap, IntegerDateTimes, Acc) ->
-    SubArrayElements = encode_array_elements(SubArray, ElementType, OIDMap, IntegerDateTimes, []),
-    encode_array_elements(Tail, ElementType, OIDMap, IntegerDateTimes, [{array, SubArrayElements} | Acc]);
-encode_array_elements([null | Tail], ElementType, OIDMap, IntegerDateTimes, Acc) ->
-    encode_array_elements(Tail, ElementType, OIDMap, IntegerDateTimes, [null | Acc]);
-encode_array_elements([Element | Tail], ElementType, OIDMap, IntegerDateTimes, Acc) ->
-    Encoded = encode_parameter(Element, ElementType, OIDMap, IntegerDateTimes),
-    encode_array_elements(Tail, ElementType, OIDMap, IntegerDateTimes, [Encoded | Acc]);
-encode_array_elements([], _ElementType, _OIDMap, _IntegerDateTimes, Acc) ->
-    lists:reverse(Acc).
+%% encode_array_elements([{array, SubArray} | Tail], ElementType, OIDMap, IntegerDateTimes, Acc) ->
+%%     SubArrayElements = encode_array_elements(SubArray, ElementType, OIDMap, IntegerDateTimes, []),
+%%     encode_array_elements(Tail, ElementType, OIDMap, IntegerDateTimes, [{array, SubArrayElements} | Acc]);
+%% encode_array_elements([null | Tail], ElementType, OIDMap, IntegerDateTimes, Acc) ->
+%%     encode_array_elements(Tail, ElementType, OIDMap, IntegerDateTimes, [null | Acc]);
+%% encode_array_elements([Element | Tail], ElementType, OIDMap, IntegerDateTimes, Acc) ->
+%%     Encoded = encode_parameter(Element, ElementType, OIDMap, IntegerDateTimes),
+%%     encode_array_elements(Tail, ElementType, OIDMap, IntegerDateTimes, [Encoded | Acc]);
+%% encode_array_elements([], _ElementType, _OIDMap, _IntegerDateTimes, Acc) ->
+%%     lists:reverse(Acc).
 
-encode_array_binary(ArrayElements, ElementTypeOID) ->
-    {HasNulls, Rows} = encode_array_binary_row(ArrayElements, false, []),
-    Dims = get_array_dims(ArrayElements),
-    Header = encode_array_binary_header(Dims, HasNulls, ElementTypeOID),
-    Encoded = [Header, Rows],
-    Size = iolist_size(Encoded),
-    [<<Size:32/integer>>, Encoded].
+%% encode_array_binary(ArrayElements, ElementTypeOID) ->
+%%     {HasNulls, Rows} = encode_array_binary_row(ArrayElements, false, []),
+%%     Dims = get_array_dims(ArrayElements),
+%%     Header = encode_array_binary_header(Dims, HasNulls, ElementTypeOID),
+%%     Encoded = [Header, Rows],
+%%     Size = iolist_size(Encoded),
+%%     [<<Size:32/integer>>, Encoded].
 
-encode_array_binary_row([null | Tail], _HasNull, Acc) ->
-    encode_array_binary_row(Tail, true, [<<-1:32/integer>> | Acc]);
-encode_array_binary_row([<<_BinarySize:32/integer, _BinaryVal/binary>> = Binary | Tail], HasNull, Acc) ->
-    encode_array_binary_row(Tail, HasNull, [Binary | Acc]);
-encode_array_binary_row([{array, Elements} | Tail], HasNull, Acc) ->
-    {NewHasNull, Row} = encode_array_binary_row(Elements, HasNull, []),
-    encode_array_binary_row(Tail, NewHasNull, [Row | Acc]);
-encode_array_binary_row([], HasNull, AccRow) ->
-    {HasNull, lists:reverse(AccRow)}.
+%% encode_array_binary_row([null | Tail], _HasNull, Acc) ->
+%%     encode_array_binary_row(Tail, true, [<<-1:32/integer>> | Acc]);
+%% encode_array_binary_row([<<_BinarySize:32/integer, _BinaryVal/binary>> = Binary | Tail], HasNull, Acc) ->
+%%     encode_array_binary_row(Tail, HasNull, [Binary | Acc]);
+%% encode_array_binary_row([{array, Elements} | Tail], HasNull, Acc) ->
+%%     {NewHasNull, Row} = encode_array_binary_row(Elements, HasNull, []),
+%%     encode_array_binary_row(Tail, NewHasNull, [Row | Acc]);
+%% encode_array_binary_row([], HasNull, AccRow) ->
+%%     {HasNull, lists:reverse(AccRow)}.
 
-get_array_dims([{array, SubElements} | _] = Row) ->
-    Dims0 = get_array_dims(SubElements),
-    Dim = length(Row),
-    [Dim | Dims0];
-get_array_dims(Row) ->
-    Dim = length(Row),
-    [Dim].
+%% get_array_dims([{array, SubElements} | _] = Row) ->
+%%     Dims0 = get_array_dims(SubElements),
+%%     Dim = length(Row),
+%%     [Dim | Dims0];
+%% get_array_dims(Row) ->
+%%     Dim = length(Row),
+%%     [Dim].
 
-encode_array_binary_header(Dims, HasNulls, ElementTypeOID) ->
-    NDims = length(Dims),
-    Flags = if
-        HasNulls -> 1;
-        true -> 0
-    end,
-    EncodedDimensions = [<<Dim:32/integer, 1:32/integer>> || Dim <- Dims],
-    [<<
-        NDims:32/integer,
-        Flags:32/integer,
-        ElementTypeOID:32/integer
-    >>,
-    EncodedDimensions].
+%% encode_array_binary_header(Dims, HasNulls, ElementTypeOID) ->
+%%     NDims = length(Dims),
+%%     Flags = if
+%%         HasNulls -> 1;
+%%         true -> 0
+%%     end,
+%%     EncodedDimensions = [<<Dim:32/integer, 1:32/integer>> || Dim <- Dims],
+%%     [<<
+%%         NDims:32/integer,
+%%         Flags:32/integer,
+%%         ElementTypeOID:32/integer
+%%     >>,
+%%     EncodedDimensions].
 
 %%--------------------------------------------------------------------
 %% @doc Determine if we need the statement description with these parameters.
@@ -716,8 +716,8 @@ decode_ready_for_query_message(<<$E>>) -> {ok, #ready_for_query{transaction_stat
 decode_ready_for_query_message(Payload) ->
     {error, {unknown_message, ready_for_query, Payload}}.
 
-decode_row_description_message(<<Count:16/integer, Rest/binary>> = Payload, Pool, DecodeOpts) when Count >= 0 ->
-    case decode_row_description_message0(Count, Rest, Pool, DecodeOpts, []) of
+decode_row_description_message(<<Count:16/integer, Rest/binary>> = Payload, Conn, DecodeOpts) when Count >= 0 ->
+    case decode_row_description_message0(Count, Rest, Conn, DecodeOpts, []) of
         {ok, Fields} ->
             {ok, #row_description{count = Count, fields = Fields}};
         {error, _} ->
@@ -727,24 +727,17 @@ decode_row_description_message(Payload, _, _) ->
     {error, {unknown_message, row_description, Payload}}.
 
 decode_row_description_message0(0, <<>>, _, _DecodeOpts, Acc) -> {ok, lists:reverse(Acc)};
-decode_row_description_message0(Count, Binary, #conn{pool=Pool}, DecodeOpts, Acc) ->
-    decode_row_description_message0(Count, Binary, Pool, DecodeOpts, Acc);
-decode_row_description_message0(Count, Binary, Pool, DecodeOpts, Acc) ->
+decode_row_description_message0(Count, Binary, Conn=#conn{pool=Pool}, DecodeOpts, Acc) ->
     case decode_string(Binary) of
         {ok, FieldName, <<TableOid:32/integer, AttrNum:16/integer, DataTypeOid:32/integer,
                           DataTypeSize:16/integer, TypeModifier:32/integer, FormatCode:16/integer,
                           Tail/binary>>} ->
             case decode_format_code(FormatCode) of
                 {ok, Format} ->
-                    ModuleTypeInfo = case catch(pg_datatypes:lookup_type_module(Pool, DataTypeOid)) of
+                    ModuleTypeInfo = case pg_datatypes:lookup_type_module(Pool, DataTypeOid) of
                                          unknown_oid ->
-                                             case proplists:get_bool(no_reload_types, DecodeOpts) of
-                                                 false ->
-                                                     %% pgo_connection:reload_types(),
-                                                     pg_datatypes:lookup_type_module(Pool, DataTypeOid);
-                                                 true ->
-                                                     unknown_oid
-                                             end;
+                                             pgo_connection:reload_types(Conn),
+                                             pg_datatypes:lookup_type_module(Pool, DataTypeOid);
                                          O ->
                                              O
                                      end,
@@ -760,7 +753,7 @@ decode_row_description_message0(Count, Binary, Pool, DecodeOpts, Acc) ->
                         data_type_size = DataTypeSize,
                         type_modifier = TypeModifier,
                         format = Format},
-                    decode_row_description_message0(Count - 1, Tail, Pool, DecodeOpts, [Field | Acc]);
+                    decode_row_description_message0(Count - 1, Tail, Conn, DecodeOpts, [Field | Acc]);
                 {error, _} = Error -> Error
             end;
         {error, _} = Error -> Error;
@@ -901,13 +894,13 @@ cast_datetime_usecs(Secs0, USecs, DecodeOptions) ->
     end,
     cast_datetime_secs(Secs1, DecodeOptions).
 
-type_to_oid(Type, Pool) ->
-    case ets:match_object(Pool, {'_', Type}) of
-        [{OIDType, _}] ->
-            OIDType;
-        [] ->
-            undefined
-    end.
+%% type_to_oid(Type, Pool) ->
+%%     case ets:match_object(Pool, {'_', Type}) of
+%%         [{OIDType, _}] ->
+%%             OIDType;
+%%         [] ->
+%%             undefined
+%%     end.
 
 %% types necessary for type server bootstrapping
 decode_value_bin(?OIDOID, <<Value:32/signed-integer>>, _OIDMap, _DecodeOptions) ->
@@ -1059,11 +1052,11 @@ decode_value_bin(Oid, Value, _OidMap, {Module, TypeInfo}) ->
 %%     NewValue = Value * ?NBASE,
 %%     decode_numeric_bin_scale(NewValue, DecShift - 1).
 
-decode_oid(Oid, Pool) ->
-    case ets:lookup(Pool, Oid) of
-        [{_, OIDName}] -> OIDName;
-        [] -> Oid
-    end.
+%% decode_oid(Oid, Pool) ->
+%%     case ets:lookup(Pool, Oid) of
+%%         [{_, OIDName}] -> OIDName;
+%%         [] -> Oid
+%%     end.
 
 %% decode_time(<<Time:64/signed-integer>>, true, DecodeOptions) ->
 %%     Seconds = Time div 1000000,
