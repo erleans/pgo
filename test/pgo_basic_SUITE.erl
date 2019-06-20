@@ -11,7 +11,8 @@
 
 all() ->
     [select, insert_update, text_types, rows_as_maps,
-     json_jsonb, types, validate_telemetry, ranges].
+     json_jsonb, types, validate_telemetry,
+     int4_range, ts_range].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
@@ -31,14 +32,15 @@ end_per_suite(_Config) ->
     application:stop(pgo),
     ok.
 
-ranges(_Config) ->
+int4_range(_Config) ->
     ?assertMatch(#{command := create},
                  pgo:query("create temporary table foo_range (id integer primary key, some_range int4range)")),
     ?assertMatch(#{command := insert},
                   pgo:query("insert into foo_range (id, some_range) values (1, $1)", [{4, 10}])),
     ?assertMatch(#{rows := [{1, {4, 10}}]},
-                 pgo:query("select * from foo_range order by id asc")),
+                 pgo:query("select * from foo_range order by id asc")).
 
+ts_range(_Config) ->
     ?assertMatch(#{command := create},
                  pgo:query("create temporary table foo_ts_range (id integer primary key, some_range tsrange)")),
     ?assertMatch(#{command := insert},

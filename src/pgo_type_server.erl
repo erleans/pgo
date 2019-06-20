@@ -63,7 +63,7 @@ terminate(_, _, #data{pool=Pool}) ->
 load(Pool, LastReload, RequestTime, PoolConfig) when LastReload < RequestTime ->
     try pgo_handler:open(Pool, PoolConfig) of
         {ok, Conn=#conn{parameters=Parameters}} ->
-            Oids = load_and_update_types(Conn),
+            Oids = load_and_update_types(Conn, Pool),
             pg_datatypes:update(Pool, Oids, Parameters);
         {error, _} ->
             failed
@@ -74,20 +74,26 @@ load(Pool, LastReload, RequestTime, PoolConfig) when LastReload < RequestTime ->
 load(_, _, _, _) ->
     ok.
 
--define(BOOTSTRAP_QUERY, ["SELECT oid, typname, typsend, typreceive,"
-                          "typoutput, typinput, typelem FROM pg_type"]).
+-define(BOOTSTRAP_QUERY, ["SELECT t.oid, t.typname, t.typsend, t.typreceive, t.typlen, "
+                          "t.typoutput, t.typinput, t.typelem, coalesce(r.rngsubtype, 0) "
+                          "FROM pg_type AS t LEFT JOIN pg_range AS r ON r.rngtypid = t.oid "
+                          "OR (t.typbasetype <> 0 AND r.rngtypid = t.typbasetype) "
+                          "ORDER BY t.oid"]).
 
-load_and_update_types(Conn) ->
+load_and_update_types(Conn, Pool) ->
     try
         {ok, Oids} = pgo_handler:simple_query(Conn, ?BOOTSTRAP_QUERY),
         [#type_info{oid=binary_to_integer(Oid),
+                    pool=Pool,
                     name=binary:copy(Name),
                     typsend=binary:copy(Send),
                     typreceive=binary:copy(Receive),
+                    typlen=binary_to_integer(Len),
                     output=binary:copy(Output),
                     input=binary:copy(Input),
-                    array_elem=binary_to_integer(ArrayOid)}
-         || [Oid, Name, Send, Receive, Output, Input, ArrayOid] <- Oids]
+                    array_elem=binary_to_integer(ArrayOid),
+                    base_oid=binary_to_integer(BaseOid)}
+         || [Oid, Name, Send, Receive, Len, Output, Input, ArrayOid, BaseOid] <- Oids]
     catch
         _:_:_ ->
             failed
