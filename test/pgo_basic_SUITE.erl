@@ -46,8 +46,8 @@ ts_range(_Config) ->
     ?assertMatch(#{command := insert},
                   pgo:query("insert into foo_ts_range (id, some_range) values (1, $1)", [{{{2001, 1, 1}, {4, 10, 0}},
                                                                                           {{2001, 1, 1}, {5, 10, 0.0}}}])),
-    ?assertMatch(#{rows := [{1, {{{2001, 1, 1}, {4, 10, 0.0}},
-                                 {{2001, 1, 1}, {5, 10, 0.0}}}}]},
+    ?assertMatch(#{rows := [{1, {{{2001, 1, 1}, {4, 10, 0}},
+                                 {{2001, 1, 1}, {5, 10, 0}}}}]},
                  pgo:query("select * from foo_ts_range order by id asc")),
 
     ok.

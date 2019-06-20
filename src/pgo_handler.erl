@@ -300,9 +300,11 @@ encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool, IntegerDateTi
                                                        Pool, IntegerDateTimes),
         SinglePacket = [BindMessage, DescribeMessage, ExecuteMessage, SyncOrFlushMessage],
         {ok, SinglePacket}
-    catch throw:Exception ->
+    catch throw:Exception:S ->
+            ct:pal("Exception ~p", [{Exception, S}]),
             {error, Exception};
-          _:Exception ->
+          _:Exception:S ->
+            ct:pal("Exception ~p", [{Exception, S}]),
             {error, Exception}
     end.
 
