@@ -1,20 +1,19 @@
 version: 2.1
 
 orbs:
-  rebar3: tsloughter/rebar3@0.5.4
+  rebar3: tsloughter/rebar3@0.6.4
+  codecov: circleci/codecov@0.0.3
 
 jobs:
   ct:
     docker:
-      - image: erlang:21.2-alpine
+      - image: circleci/erlang:22
         entrypoint: ["/bin/sh"]
       - image: circleci/postgres:11-alpine-ram
         environment:
           POSTGRES_USER: test
           POSTGRES_DB: test
-
     steps:
-      - rebar3/install_ca_certs
       - checkout
       - rebar3/with_deps_cache:
           steps:
@@ -26,7 +25,6 @@ jobs:
       - store_artifacts:
           path: ~/project/_build/test/logs
           destination: common_test
-
       # for cover
       - persist_to_workspace:
           root: ~/project/
@@ -36,15 +34,10 @@ jobs:
   codecov:
     executor: rebar3/erlang
     steps:
-      - rebar3/install_ca_certs
-      - checkout
       - attach_workspace:
           at: ~/project/
-      - run:
-          command: |
-            rebar3 covertool generate
-            apk add --update python python-dev py-pip git
-            pip install codecov && codecov -f _build/test/covertool/pgo.covertool.xml
+      - codecov/upload:
+          path: _build/test/covertool/pgo.covertool.xml
 
 workflows:
   version: 2.1
@@ -61,6 +54,7 @@ workflows:
       - ct:
           requires:
             - rebar3/compile
+
       - rebar3/cover:
           requires:
             - ct

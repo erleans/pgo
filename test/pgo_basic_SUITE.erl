@@ -23,7 +23,8 @@ groups() ->
 
 cases() ->
     [select, insert_update, text_types, rows_as_maps,
-     json_jsonb, types, validate_telemetry, numerics].
+     json_jsonb, types, validate_telemetry,
+     int4_range, ts_range, numerics].
 
 init_per_suite(Config) ->
     Config.
@@ -62,6 +63,26 @@ end_per_group(_, _Config) ->
     application:stop(pgo),
     ok.
 
+int4_range(_Config) ->
+    ?assertMatch(#{command := create},
+                 pgo:query("create temporary table foo_range (id integer primary key, some_range int4range)")),
+    ?assertMatch(#{command := insert},
+                  pgo:query("insert into foo_range (id, some_range) values (1, $1)", [{4, 10}])),
+    ?assertMatch(#{rows := [{1, {4, 10}}]},
+                 pgo:query("select * from foo_range order by id asc")).
+
+ts_range(_Config) ->
+    ?assertMatch(#{command := create},
+                 pgo:query("create temporary table foo_ts_range (id integer primary key, some_range tsrange)")),
+    ?assertMatch(#{command := insert},
+                  pgo:query("insert into foo_ts_range (id, some_range) values (1, $1)", [{{{2001, 1, 1}, {4, 10, 0}},
+                                                                                          {{2001, 1, 1}, {5, 10, 0.0}}}])),
+    ?assertMatch(#{rows := [{1, {{{2001, 1, 1}, {4, 10, 0}},
+                                 {{2001, 1, 1}, {5, 10, 0}}}}]},
+                 pgo:query("select * from foo_ts_range order by id asc")),
+
+    ok.
+
 validate_telemetry(_Config) ->
     Self = self(),
     telemetry:attach(<<"send-query-time">>, [pgo, query],
@@ -80,8 +101,10 @@ validate_telemetry(_Config) ->
     end.
 
 select(_Config) ->
-    ?assertMatch({error, _}, pgo:query("select $1", [])),
-
+    {error, {Module, Reason}} = pgo:query("select $1", []),
+    ?assertEqual("parameters needed for query not equal to number of arguments 1 != 0", Module:format_error(Reason)),
+    {error, {Module1, Reason1}} = pgo:query("select $1", [1, 2]),
+    ?assertEqual("parameters needed for query not equal to number of arguments 1 != 2", Module1:format_error(Reason1)),
     ?assertMatch(#{rows := [{null}]}, pgo:query("select null")),
     ?assertMatch(#{rows := [{null}]}, pgo:query("select null", [])),
     ?assertMatch(#{rows := [{null}]}, pgo:query("select null")),
@@ -135,12 +158,12 @@ json_jsonb(_Config) ->
         pgo:query("select '[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]'::json"),
     ?assertMatch([[#{<<"a">> := <<"foo">>},
                    #{<<"b">> := <<"bar">>},
-                   #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {{json, R}} <- Rows]),
+                   #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {R} <- Rows]),
     #{command := select, rows := Rows1} =
         pgo:query("select b_json from tmp where id = 2"),
     ?assertMatch([[#{<<"a">> := <<"foo">>},
                    #{<<"b">> := <<"bar">>},
-                   #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {{json, R}} <- Rows1]),
+                   #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {R} <- Rows1]),
 
     #{command := create} =
         pgo:query("create table tmp_b (id integer primary key, a_json jsonb, b_json json)"),
@@ -148,14 +171,14 @@ json_jsonb(_Config) ->
         pgo:query("select '[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]'::jsonb"),
     ?assertMatch([[#{<<"a">> := <<"foo">>},
                    #{<<"b">> := <<"bar">>},
-                   #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {{jsonb, R}} <- Rows2]),
+                   #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {R} <- Rows2]),
 
     #{command := insert} = pgo:query("insert into tmp_b (id, a_json) values ($1, $2)",
                                      [1, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>]),
     #{command := select, rows := Rows3} = pgo:query("select a_json from tmp_b where id = 1"),
     ?assertMatch([[#{<<"a">> := <<"foo">>},
                    #{<<"b">> := <<"bar">>},
-                   #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {{jsonb, R}} <- Rows3]).
+                   #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {R} <- Rows3]).
 
 types(_Config) ->
     ?assertMatch(#{command := create},
@@ -238,8 +261,7 @@ types(_Config) ->
     ?assertMatch({?TXT_UUID}, Row18).
 
 numerics(_Config) ->
-
-     BasicQuery = "select $1::numeric",
+    BasicQuery = "select $1::numeric",
     ?assertMatch(#{rows := [{1}]}, pgo:query(BasicQuery, [1])),
     ?assertMatch(#{rows := [{-1}]}, pgo:query(BasicQuery, [-1])),
     ?assertMatch(#{rows := [{1.1}]}, pgo:query(BasicQuery, [1.1])),

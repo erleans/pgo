@@ -7,12 +7,12 @@
    [kernel,
     stdlib,
     backoff,
-    telemetry
+    telemetry,
+    pg_types
    ]},
   {env,[]},
   {modules, []},
 
-  {maintainers, ["Tristan Sloughter"]},
   {licenses, ["Apache 2"]},
   {links, [{"Github", "https://github.com/erleans/pgo"}]}
  ]}.
