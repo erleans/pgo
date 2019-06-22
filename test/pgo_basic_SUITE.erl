@@ -94,7 +94,13 @@ int4_range(_Config) ->
                  pgo:query("insert into foo_range (id, some_range) values (3, $1)",
                            [{{true, 4}, {false, unbound}}])),
     ?assertMatch(#{rows := [{3, {{true, 4}, {false, unbound}}}]},
-                 pgo:query("select * from foo_range where id=3")).
+                 pgo:query("select * from foo_range where id=3")),
+
+    ?assertMatch(#{command := insert},
+                 pgo:query("insert into foo_range (id, some_range) values (4, $1)",
+                           [empty])),
+    ?assertMatch(#{rows := [{4, empty}]},
+                 pgo:query("select * from foo_range where id=4")).
 
 ts_range(_Config) ->
     ?assertMatch(#{command := create},
