@@ -268,7 +268,7 @@ extended_query(Conn=#conn{socket=Socket,
     %% We ask for a description of parameters only if required.
     PacketT = case pgo_query_cache:lookup(Pool, Query) of
                   DataTypes when is_list(DataTypes) ->
-                      case encode_bind_describe_execute(Parameters, DataTypes, Pool) of
+                      case encode_bind_describe_execute(Conn, Parameters, DataTypes) of
                           {ok, BindExecute} ->
                               {ok, [ParseMessage, BindExecute], parse_complete};
                           {error, _} = Error ->
@@ -304,13 +304,13 @@ extended_query(Conn=#conn{socket=Socket,
             PacketT
     end.
 
--spec encode_bind_describe_execute([any()], [oid()], atom()) -> {ok, iodata()} | {error, any()}.
-encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool) ->
+-spec encode_bind_describe_execute(pgo_pool:conn(), [any()], [oid()]) -> {ok, iodata()} | {error, any()}.
+encode_bind_describe_execute(Conn, Parameters, ParameterDataTypes) ->
     DescribeMessage = pgo_protocol:encode_describe_message(portal, ""),
     ExecuteMessage = pgo_protocol:encode_execute_message("", 0),
     SyncOrFlushMessage = pgo_protocol:encode_sync_message(),
     try
-        BindMessage = pgo_protocol:encode_bind_message("", "", Parameters, ParameterDataTypes, Pool),
+        BindMessage = pgo_protocol:encode_bind_message(Conn, "", "", Parameters, ParameterDataTypes),
         SinglePacket = [BindMessage, DescribeMessage, ExecuteMessage, SyncOrFlushMessage],
         {ok, SinglePacket}
     catch
@@ -351,7 +351,7 @@ receive_loop0(#parameter_description{data_types=ParameterDataTypes},
                                               pool=Pool}) ->
     pgo_query_cache:insert(Pool, get(query), ParameterDataTypes),
     %% oob_update_oid_map_if_required(Conn, ParameterDataTypes, DecodeOptions),
-    PacketT = encode_bind_describe_execute(Parameters, ParameterDataTypes, Pool),
+    PacketT = encode_bind_describe_execute(Conn, Parameters, ParameterDataTypes),
     case PacketT of
         {ok, SinglePacket} ->
             case SocketModule:send(Socket, SinglePacket) of

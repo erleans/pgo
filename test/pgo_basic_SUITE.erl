@@ -24,7 +24,8 @@ groups() ->
 cases() ->
     [select, insert_update, text_types, rows_as_maps,
      json_jsonb, types, validate_telemetry,
-     int4_range, ts_range, tstz_range, numerics].
+     int4_range, ts_range, tstz_range, numerics,
+     hstore].
 
 init_per_suite(Config) ->
     Config.
@@ -59,6 +60,8 @@ end_per_group(_, _Config) ->
     pgo:query("drop table foo"),
     pgo:query("drop table types"),
     pgo:query("drop table numeric_tmp"),
+    pgo:query("drop table hstore_tmp"),
+    pgo:query("drop extension hstore"),
 
     application:stop(pgo),
     ok.
@@ -335,7 +338,7 @@ numerics(_Config) ->
     ?assertMatch(#{rows := [{1.0e+32}]}, pgo:query(BasicQuery, [<<"1.0e+32">>])),
 
 
-     #{command := create} = pgo:query("create table numeric_tmp (id integer primary key, a_int integer, a_num numeric,
+    #{command := create} = pgo:query("create table numeric_tmp (id integer primary key, a_int integer, a_num numeric,
                                       b_num numeric(5,3))"),
     ?assertMatch(#{command := insert}, pgo:query("insert into numeric_tmp (id, a_int, a_num) values ($1, $2, $3)", [1,1,
                                                                                                                     0.010000001])),
@@ -348,3 +351,14 @@ numerics(_Config) ->
     ?assertMatch(#{rows := [{0.01}]}, pgo:query("select a_num::numeric(10, 3) from numeric_tmp where id = 1", [])),
 
     ?assertMatch(#{rows := [{1.0e-32}]}, pgo:query("select a_num::numeric from numeric_tmp where id = 2", [])).
+
+hstore(_Config) ->
+    #{command := create} = pgo:query("CREATE EXTENSION hstore"),
+    #{command := create} = pgo:query("create table hstore_tmp (id integer primary key, labels hstore)"),
+
+    ?assertMatch(#{command := insert}, pgo:query("insert into hstore_tmp (id, labels) values ($1, $2)", [1, #{<<"key-1">> => <<"value-1">>, <<"key-2">> => <<"value-2">>}])),
+    ?assertMatch(#{command := select,
+                   rows := [{1, #{<<"key-1">> := <<"value-1">>, <<"key-2">> := <<"value-2">>}}]},
+                 pgo:query("select id, labels from hstore_tmp where id=1")),
+
+    ok.

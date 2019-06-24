@@ -94,23 +94,29 @@ encode_parse_message(PreparedStatementName, Query, DataTypes) ->
 %%--------------------------------------------------------------------
 %% @doc Encode a bind message.
 %%
--spec encode_bind_message(iodata(), iodata(), [any()], [pg_types:oid()], atom()) -> iolist().
-encode_bind_message(PortalName, StatementName, Parameters, ParametersDataTypes, OIDMap) ->
+-spec encode_bind_message(pg_pool:conn(), iodata(), iodata(), [any()], [pg_types:oid()]) -> iolist().
+encode_bind_message(Conn=#conn{pool=Pool}, PortalName, StatementName, Parameters, ParametersDataTypes) ->
     ParametersCount = length(Parameters),
     ParametersCountBin = <<ParametersCount:16/integer>>,
     ParametersWithTypes =
-        case ParametersDataTypes of
-            [] ->
-                [{Parameter, undefined} || Parameter <- Parameters];
-            _ ->
-                try lists:zip(Parameters, ParametersDataTypes)
-                catch
-                    _:_ ->
-                        throw({?MODULE, {parameters, length(ParametersDataTypes), length(Parameters)}})
-                end
+        try lists:zipwith(fun(P, Oid) ->
+                                  TypeInfo =
+                                      case pg_types:lookup_type_info(Pool, Oid) of
+                                          unknown_oid ->
+                                              pgo_connection:reload_types(Conn),
+                                              pg_types:lookup_type_info(Pool, Oid);
+                                          T ->
+                                              T
+                                      end,
+                                  {P, TypeInfo}
+                          end, Parameters, ParametersDataTypes)
+        catch
+            _:_ ->
+                throw({?MODULE, {parameters, length(ParametersDataTypes), length(Parameters)}})
         end,
-    ParametersValues = [encode_parameter(Parameter, Type, OIDMap)
-                        || {Parameter, Type} <- ParametersWithTypes],
+
+    ParametersValues = [encode_parameter(Parameter, TypeInfo)
+                        || {Parameter, TypeInfo} <- ParametersWithTypes],
     ParametersFormatsBin = [ParametersCountBin | [<<1:16/integer>> || _ <- ParametersValues]],
     Results = <<1:16/integer, 1:16/integer>>,   % We want all results in binary format.
     Packet = [PortalName, 0, StatementName, 0, ParametersFormatsBin,
@@ -123,11 +129,11 @@ encode_bind_message(PortalName, StatementName, Parameters, ParametersDataTypes, 
 %% All parameters are currently encoded in text format except binaries that are
 %% encoded as binaries.
 %%
--spec encode_parameter(any(), pg_types:oid() | undefined, atom()) -> iodata().
-encode_parameter(null, _Type, _Pool) ->
+-spec encode_parameter(any(), pg_types:oid() | undefined) -> iodata().
+encode_parameter(null, _Type) ->
     <<-1:32/integer>>;
-encode_parameter(Parameter, Oid, Pool) ->
-    pg_types:encode(Pool, Parameter, Oid).
+encode_parameter(Parameter, TypeInfo) ->
+    pg_types:encode(Parameter, TypeInfo).
 
 %%--------------------------------------------------------------------
 %% @doc Determine if we need the statement description with these parameters.
@@ -197,7 +203,7 @@ encode_string_message(Identifier, String) ->
 %%--------------------------------------------------------------------
 %% @doc Decode a message.
 %%
--spec decode_message(byte(), binary(), atom(), [pgo:decode_option()])
+-spec decode_message(byte(), binary(), pgo_pool:conn(), [pgo:decode_option()])
                     -> {ok, pgsql_backend_message()} | {error, any()}.
 decode_message($R, Payload, _,  _DecodeOpts) -> decode_authentication_message(Payload);
 decode_message($K, Payload, _,  _DecodeOpts) -> decode_backend_key_data_message(Payload);
