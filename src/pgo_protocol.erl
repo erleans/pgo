@@ -111,8 +111,13 @@ encode_bind_message(Conn=#conn{pool=Pool}, PortalName, StatementName, Parameters
                                   {P, TypeInfo}
                           end, Parameters, ParametersDataTypes)
         catch
-            _:_ ->
-                throw({?MODULE, {parameters, length(ParametersDataTypes), length(Parameters)}})
+            error:function_clause:Stacktrace ->
+                case length(ParametersDataTypes) =/= length(Parameters) of
+                    true ->
+                        error({?MODULE, {parameters, length(ParametersDataTypes), length(Parameters)}});
+                    false ->
+                        erlang:raise(error, function_clause, Stacktrace)
+                end
         end,
 
     ParametersValues = [encode_parameter(Parameter, TypeInfo)
