@@ -76,7 +76,10 @@ load(_, _, _, _) ->
 
 %% TODO: only return oids not already selected in previous runs
 -define(BOOTSTRAP_QUERY, ["SELECT t.oid, t.typname, t.typsend, t.typreceive, t.typlen, "
-                          "t.typoutput, t.typinput, t.typelem, coalesce(r.rngsubtype, 0) "
+                          "t.typoutput, t.typinput, t.typelem, coalesce(r.rngsubtype, 0), ARRAY ("
+                          "SELECT a.atttypid FROM pg_attribute AS a "
+                          "WHERE a.attrelid = t.typrelid AND a.attnum > 0 AND NOT a.attisdropped "
+                          "ORDER BY a.attnum) "
                           "FROM pg_type AS t LEFT JOIN pg_range AS r ON r.rngtypid = t.oid "
                           "OR (t.typbasetype <> 0 AND r.rngtypid = t.typbasetype) "
                           "ORDER BY t.oid"]).
@@ -94,12 +97,29 @@ load_and_update_types(Conn, Pool) ->
                     input=binary:copy(Input),
                     elem_oid=binary_to_integer(ArrayOid),
                     base_oid=binary_to_integer(BaseOid),
-                    comp_oids=[]}
-         || [Oid, Name, Send, Receive, Len, Output, Input, ArrayOid, BaseOid] <- Oids]
+                    comp_oids=parse_array_oids(CompOids)}
+         || [Oid, Name, Send, Receive, Len, Output, Input, ArrayOid, BaseOid, CompOids] <- Oids]
     catch
         _:_:_ ->
 
             failed
     after
         pgo_handler:close(Conn)
+    end.
+
+parse_array_oids(null) ->
+    [];
+parse_array_oids(<<>>) ->
+    [];
+parse_array_oids(<<"{}">>) ->
+    [];
+parse_array_oids(<<"{", Rest/binary>>) ->
+    parse_array_oids(Rest, []).
+
+parse_array_oids(Bin, Acc) ->
+    case string:to_integer(Bin) of
+        {Int, <<",", Rest/binary>>} ->
+            parse_array_oids(Rest, [Int | Acc]);
+        {Int, <<"}">>} ->
+            lists:reverse([Int | Acc])
     end.

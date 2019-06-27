@@ -25,7 +25,7 @@ cases() ->
     [select, insert_update, text_types, rows_as_maps,
      json_jsonb, types, validate_telemetry,
      int4_range, ts_range, tstz_range, numerics,
-     hstore].
+     hstore, records].
 
 init_per_suite(Config) ->
     Config.
@@ -362,3 +362,12 @@ hstore(_Config) ->
                  pgo:query("select id, labels from hstore_tmp where id=1")),
 
     ok.
+
+records(_Config) ->
+    pgo:query("DROP TABLE IF EXISTS composite1"),
+    #{command := create} = pgo:query("CREATE TABLE composite1 (a int, b text)"),
+
+    ?assertMatch(#{rows := [{{1, <<"2">>}}]},pgo:query("SELECT (1, '2')::composite1", [])),
+    ?assertMatch(#{rows := [{[{1, <<"2">>}]}]}, pgo:query("SELECT ARRAY[(1, '2')::composite1]", [])),
+
+    ?assertMatch(#{rows := [{{1, <<"2">>}}]},pgo:query("SELECT $1::composite1", [{1, <<"2">>}])).
