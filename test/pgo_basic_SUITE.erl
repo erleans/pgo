@@ -25,7 +25,8 @@ cases() ->
     [select, insert_update, text_types, rows_as_maps,
      json_jsonb, types, validate_telemetry,
      int4_range, ts_range, tstz_range, numerics,
-     hstore, records].
+     hstore, records, circle, path, polygon, line,
+     line_segment].
 
 init_per_suite(Config) ->
     Config.
@@ -371,3 +372,29 @@ records(_Config) ->
     ?assertMatch(#{rows := [{[{1, <<"2">>}]}]}, pgo:query("SELECT ARRAY[(1, '2')::composite1]", [])),
 
     ?assertMatch(#{rows := [{{1, <<"2">>}}]},pgo:query("SELECT $1::composite1", [{1, <<"2">>}])).
+
+circle(_Config) ->
+    ?assertMatch(#{rows := [{#{center := #{x := 1.0,
+                                           y := 1.0},
+                               radius := 10.0}}]}, pgo:query("SELECT $1::circle", [#{center => #{x => 1,
+                                                                                                 y => 1},
+                                                                                     radius => 10}])).
+
+path(_Config) ->
+    ?assertMatch(#{rows := [{#{open := true,
+                               points := [#{x := 1.0, y := 1.0}, #{x := 2.0, y:= 3.0}]}}]},
+                 pgo:query("SELECT $1::path", [#{points => [#{x => 1, y => 1}, #{x => 2, y => 3}],
+                                                 open => true}])).
+
+polygon(_Config) ->
+    ?assertMatch(#{rows := [{#{vertices := [#{x := 1.0, y := 1.0}, #{x := 2.0, y:= 3.0}]}}]},
+                 pgo:query("SELECT $1::polygon", [#{vertices => [#{x => 1, y => 1}, #{x => 2, y => 3}]}])).
+
+line(_Config) ->
+    ?assertMatch(#{rows := [{#{a := 1.0, b := 2.0, c := 3.0}}]},
+                 pgo:query("SELECT $1::line", [#{a => 1, b => 2, c => 3}])).
+
+line_segment(_Config) ->
+    ?assertMatch(#{rows := [{#{point1 := #{x := 1.0, y := 1.0}, point2 := #{x := 2.0, y := 3.0}}}]},
+                 pgo:query("SELECT $1::lseg", [#{point1 => #{x => 1, y => 1},
+                                                 point2 => #{x => 2, y => 3}}])).
