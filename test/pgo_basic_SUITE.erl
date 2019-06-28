@@ -26,7 +26,7 @@ cases() ->
      json_jsonb, types, validate_telemetry,
      int4_range, ts_range, tstz_range, numerics,
      hstore, records, circle, path, polygon, line,
-     line_segment].
+     line_segment, tid, bit_string].
 
 init_per_suite(Config) ->
     Config.
@@ -398,3 +398,16 @@ line_segment(_Config) ->
     ?assertMatch(#{rows := [{#{point1 := #{x := 1.0, y := 1.0}, point2 := #{x := 2.0, y := 3.0}}}]},
                  pgo:query("SELECT $1::lseg", [#{point1 => #{x => 1, y => 1},
                                                  point2 => #{x => 2, y => 3}}])).
+
+tid(_Config) ->
+    ?assertMatch(#{rows := [{{1, 2}}]},
+                 pgo:query("SELECT $1::tid", [{1, 2}])).
+
+bit_string(_Config) ->
+    ?assertMatch(#{rows := [{<<1:1,0:1,1:1,0:1,0:1>>}]},
+                 pgo:query("SELECT bit '101'::bit(5)", [])),
+
+    ?assertMatch(#{rows := [{<<1:1,0:1,1:1,0:1,0:1>>}]},
+                 pgo:query("SELECT $1::bit(5)", [<<1:1,0:1,1:1>>])),
+
+    ?assertMatch(#{rows := [{<<1:1,1:1,0:1>>}]}, pgo:query("SELECT bit '110' :: varbit", [])).
