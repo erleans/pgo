@@ -22,7 +22,7 @@ end_per_suite(_Config) ->
 
 select(_Config) ->
     ?assertMatch(#{command := select,
-                  rows := [{#{lat := 2.0, long := 0.0}}]},
+                  rows := [{#{y := 2.0, x := 0.0}}]},
                  pgo:query("select '(0,2.0)'::point")).
 
 insert(_Config) ->
@@ -31,18 +31,18 @@ insert(_Config) ->
 
     ?assertMatch(#{command := insert},
                  pgo:query("insert into points (a_point) VALUES ($1)",
-                           [#{long => 1.1, lat => 74.9}])),
+                           [#{x => 1.1, y => 74.9}])),
 
     ?assertMatch(#{command := insert},
                  pgo:query("insert into points (a_point) VALUES ($1)",
-                           [#{long => 3.2, lat => 4.5}])),
+                           [#{x => 3.2, y => 4.5}])),
 
     ?assertMatch(#{command := insert},
                  pgo:query("insert into points (a_point) VALUES ($1)",
-                           [#{long => 0, lat => 5}])),
+                           [#{x => 0, y => 5}])),
 
     ?assertMatch(#{command := select,
-                  rows := [{#{long := 1.1, lat := 74.9}},
-                           {#{long := 3.2, lat := 4.5}},
-                           {#{long := 0.0, lat := 5.0}}]},
+                  rows := [{#{x := 1.1, y := 74.9}},
+                           {#{x := 3.2, y := 4.5}},
+                           {#{x := 0.0, y := 5.0}}]},
                  pgo:query("select a_point from points")).
