@@ -29,6 +29,8 @@ cases() ->
      line_segment, tid, bit_string].
 
 init_per_suite(Config) ->
+    application:load(pg_types),
+    application:set_env(pg_types, json_config, {jsone, [], [{keys, atom}]}),
     Config.
 
 end_per_suite(_Config) ->
@@ -209,36 +211,18 @@ rows_as_maps(_Config) ->
                  pgo:query("select * from foo_1", [], #{decode_opts => [return_rows_as_maps]})).
 
 json_jsonb(_Config) ->
-    #{command := create} = pgo:query("create table tmp (id integer primary key, a_json json, b_json json)"),
-    #{command := insert} = pgo:query("insert into tmp (id, b_json) values ($1, $2)",
-                                     [2, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>]),
-    #{command := insert} = pgo:query("insert into tmp (id, b_json) values ($1, $2)",
-                                     [3, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>]),
+    #{command := create} = pgo:query("create table tmp (id integer primary key, a_json json, b_json jsonb)"),
+    #{command := insert} = pgo:query("insert into tmp (id, a_json, b_json) values ($1, $2, $3)",
+                                     [3, #{<<"a">> => <<"foo">>}, #{<<"b">> => <<"bar">>}]),
+
+    #{command := select, rows := [{#{b := <<"bar">>}}]} =
+        pgo:query("select b_json from tmp where id=3"),
+
     #{command := select, rows := Rows} =
         pgo:query("select '[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]'::json"),
-    ?assertMatch([[#{<<"a">> := <<"foo">>},
-                   #{<<"b">> := <<"bar">>},
-                   #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {R} <- Rows]),
-    #{command := select, rows := Rows1} =
-        pgo:query("select b_json from tmp where id = 2"),
-    ?assertMatch([[#{<<"a">> := <<"foo">>},
-                   #{<<"b">> := <<"bar">>},
-                   #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {R} <- Rows1]),
-
-    #{command := create} =
-        pgo:query("create table tmp_b (id integer primary key, a_json jsonb, b_json json)"),
-    #{command := select,rows := Rows2} =
-        pgo:query("select '[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]'::jsonb"),
-    ?assertMatch([[#{<<"a">> := <<"foo">>},
-                   #{<<"b">> := <<"bar">>},
-                   #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {R} <- Rows2]),
-
-    #{command := insert} = pgo:query("insert into tmp_b (id, a_json) values ($1, $2)",
-                                     [1, <<"[{\"a\":\"foo\"},{\"b\":\"bar\"},{\"c\":\"baz\"}]">>]),
-    #{command := select, rows := Rows3} = pgo:query("select a_json from tmp_b where id = 1"),
-    ?assertMatch([[#{<<"a">> := <<"foo">>},
-                   #{<<"b">> := <<"bar">>},
-                   #{<<"c">> := <<"baz">>}]], [jsx:decode(R, [return_maps]) || {R} <- Rows3]).
+    ?assertMatch([{[#{a := <<"foo">>},
+                    #{b := <<"bar">>},
+                    #{c := <<"baz">>}]}], Rows).
 
 types(_Config) ->
     ?assertMatch(#{command := create},
