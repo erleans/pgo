@@ -63,8 +63,8 @@ terminate(_, _, #data{pool=Pool}) ->
 load(Pool, LastReload, RequestTime, PoolConfig) when LastReload < RequestTime ->
     try pgo_handler:open(Pool, PoolConfig) of
         {ok, Conn=#conn{parameters=Parameters}} ->
-            Oids = load_and_update_types(Conn, Pool),
-            pg_types:update(Pool, Oids, Parameters);
+            TypeInfos = load_and_update_types(Conn, Pool),
+            pg_types:update(Pool, TypeInfos, Parameters);
         {error, _} ->
             failed
     catch
