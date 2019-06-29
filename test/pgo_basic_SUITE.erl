@@ -26,7 +26,7 @@ cases() ->
      json_jsonb, types, validate_telemetry,
      int4_range, ts_range, tstz_range, numerics,
      hstore, records, circle, path, polygon, line,
-     line_segment, tid, bit_string].
+     line_segment, tid, bit_string, arrays].
 
 init_per_suite(Config) ->
     application:load(pg_types),
@@ -395,3 +395,6 @@ bit_string(_Config) ->
                  pgo:query("SELECT $1::bit(5)", [<<1:1,0:1,1:1>>])),
 
     ?assertMatch(#{rows := [{<<1:1,1:1,0:1>>}]}, pgo:query("SELECT bit '110' :: varbit", [])).
+
+arrays(_Config) ->
+    ?assertMatch(#{rows := [{[<<"s1">>,null]}]}, pgo:query("SELECT $1::text[]", [[<<"s1">>, null]])).
