@@ -6,7 +6,7 @@
 -include_lib("stdlib/include/assert.hrl").
 
 -define(UUID, <<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>).
-%% <<114,127,66,166,230,160,66,35,155,114,106,94,183,67,106,181>>).
+-define(BIN_UUID, <<114,127,66,166,230,160,66,35,155,114,106,94,183,67,106,181>>).
 -define(TXT_UUID, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>).
 
 all() ->
@@ -254,7 +254,7 @@ types(_Config) ->
     ?assertMatch(#{command := insert}, pgo:query("insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
                                                   [19, null, null, null, null, null, 3.0])),
     ?assertMatch(#{command := insert}, pgo:query("insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)",
-                                                  [10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, ?UUID, <<"deadbeef">>, 3.1415])),
+                                                  [10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, ?BIN_UUID, <<"deadbeef">>, 3.1415])),
 
 
     R = pgo:query("select * from types where id = 10"),
@@ -262,7 +262,7 @@ types(_Config) ->
     #{command := select, rows := [Row]} = R,
     ?assertMatch({10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, _UUID, <<"deadbeef">>, _Float}, Row),
     {10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, UUID, <<"deadbeef">>, Float} = Row,
-    ?assertMatch(?UUID, UUID),
+    ?assertMatch(?BIN_UUID, UUID),
     ?assert(Float > 3.1413),
     ?assert(Float < 3.1416),
 
@@ -271,7 +271,7 @@ types(_Config) ->
     #{command := select, rows := [Row1]} = R1,
     ?assertMatch({10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, _UUID, <<"deadbeef">>, _Float}, Row1),
     {10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, UUID1, <<"deadbeef">>, Float1} = Row1,
-    ?assertMatch(<<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>, UUID1),
+    ?assertMatch(?BIN_UUID, UUID1),
     ?assert(Float1 > 3.1413),
     ?assert(Float1 < 3.1416),
     ?assertMatch(#{command := insert},
