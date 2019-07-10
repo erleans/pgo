@@ -355,6 +355,7 @@ records(_Config) ->
     ?assertMatch(#{rows := [{{1, <<"2">>}}]},pgo:query("SELECT (1, '2')::composite1", [])),
     ?assertMatch(#{rows := [{[{1, <<"2">>}]}]}, pgo:query("SELECT ARRAY[(1, '2')::composite1]", [])),
 
+    ?assertMatch(#{rows := [{{null, <<"2">>}}]},pgo:query("SELECT $1::composite1", [{null, <<"2">>}])),
     ?assertMatch(#{rows := [{{1, <<"2">>}}]},pgo:query("SELECT $1::composite1", [{1, <<"2">>}])).
 
 circle(_Config) ->

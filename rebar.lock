@@ -2,7 +2,7 @@
 [{<<"backoff">>,{pkg,<<"backoff">>,<<"1.1.6">>},0},
  {<<"pg_types">>,
   {git,"https://github.com/tsloughter/pg_types.git",
-       {ref,"32ed1401f353f7cba7c56dd8f1d3aaaeb2ac05d0"}},
+       {ref,"5da9d1eb6e025bab973b65cd1f8b7b899f20d04c"}},
   0},
  {<<"telemetry">>,{pkg,<<"telemetry">>,<<"0.4.0">>},0}]}.
 [
