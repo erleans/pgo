@@ -77,29 +77,29 @@ int4_range(_Config) ->
     ?assertMatch(#{rows := [{empty}]},
                  pgo:query("select '[1,1)'::int4range")),
 
-    ?assertMatch(#{rows := [{{{true, 1},
-                              {false, 3}}}]},
+    ?assertMatch(#{rows := [{{{1, 3},
+                              {true, false}}}]},
                  pgo:query("select '[1,3)'::int4range")),
 
-    ?assertMatch(#{rows := [{{{true, 1},
-                              {false, unbound}}}]},
+    ?assertMatch(#{rows := [{{{1, unbound},
+                              {true, false}}}]},
                  pgo:query("select '[1,]'::int4range")),
 
     ?assertMatch(#{command := insert},
-                  pgo:query("insert into foo_range (id, some_range) values (1, $1)", [{4, 12}])),
-    ?assertMatch(#{rows := [{1, {{true, 4}, {false, 13}}}]},
+                 pgo:query("insert into foo_range (id, some_range) values (1, $1)", [{4, 12}])),
+    ?assertMatch(#{rows := [{1, {{4, 13}, {true, false}}}]},
                  pgo:query("select * from foo_range where id=1")),
 
     ?assertMatch(#{command := insert},
-                  pgo:query("insert into foo_range (id, some_range) values (2, $1)",
-                            [{{true, 4}, {false, 12}}])),
-    ?assertMatch(#{rows := [{2, {{true, 4}, {false, 12}}}]},
+                 pgo:query("insert into foo_range (id, some_range) values (2, $1)",
+                           [{{4, 12}, {true, false}}])),
+    ?assertMatch(#{rows := [{2, {{4, 12}, {true, false}}}]},
                  pgo:query("select * from foo_range where id=2")),
 
     ?assertMatch(#{command := insert},
                  pgo:query("insert into foo_range (id, some_range) values (3, $1)",
-                           [{{true, 4}, {false, unbound}}])),
-    ?assertMatch(#{rows := [{3, {{true, 4}, {false, unbound}}}]},
+                           [{{4, unbound}, {true, false}}])),
+    ?assertMatch(#{rows := [{3, {{4, unbound}, {true, false}}}]},
                  pgo:query("select * from foo_range where id=3")),
 
     ?assertMatch(#{command := insert},
@@ -114,33 +114,33 @@ ts_range(_Config) ->
     ?assertMatch(#{command := insert},
                   pgo:query("insert into foo_ts_range (id, some_range) values (1, $1)", [{{{2001, 1, 1}, {4, 10, 0}},
                                                                                           {{2001, 1, 1}, {5, 10, 0.0}}}])),
-    ?assertMatch(#{rows := [{1, {{true, {{2001, 1, 1}, {4, 10, 0}}},
-                                 {true, {{2001, 1, 1}, {5, 10, 0}}}}}]},
+    ?assertMatch(#{rows := [{1, {{{{2001, 1, 1}, {4, 10, 0}}, {{2001, 1, 1}, {5, 10, 0}}},
+                                 {true, true}}}]},
                  pgo:query("select * from foo_ts_range order by id asc")),
 
 
     ok.
 
 tstz_range(_Config) ->
-    ?assertMatch(#{rows := [{{{true,{{2019,6,22},{8,0,0}}},
-                              {true,{{2019,6,22},{9,0,0}}}}}]}, pgo:query("SELECT tstzrange('2019-06-22 08:00:00.000+00','2019-06-22 09:00:00.000+00', '[]');")),
+    ?assertMatch(#{rows := [{{{{{2019,6,22},{8,0,0}}, {{2019,6,22},{9,0,0}}},
+                              {true, true}}}]}, pgo:query("SELECT tstzrange('2019-06-22 08:00:00.000+00','2019-06-22 09:00:00.000+00', '[]');")),
 
-    ?assertMatch(#{rows := [{{{true,{{2019,6,22},{8,0,0}}},
-                              {false,{{2019,6,22},{9,0,0}}}}}]},pgo:query("SELECT tstzrange('2019-06-22 08:00:00.000+00','2019-06-22 09:00:00.000+00', '[)');")),
+    ?assertMatch(#{rows := [{{{{{2019,6,22},{8,0,0}}, {{2019,6,22},{9,0,0}}},
+                              {true, false}}}]},pgo:query("SELECT tstzrange('2019-06-22 08:00:00.000+00','2019-06-22 09:00:00.000+00', '[)');")),
 
-    ?assertMatch(#{rows := [{{{true,{{2019,6,22},{8,0,0}}},
-                              {true,infinity}}}]},pgo:query("SELECT tstzrange('2019-06-22 08:00:00.000+00','infinity', '[]');")),
+    ?assertMatch(#{rows := [{{{{{2019,6,22},{8,0,0}}, infinity},
+                              {true, true}}}]},pgo:query("SELECT tstzrange('2019-06-22 08:00:00.000+00','infinity', '[]');")),
 
-    ?assertMatch(#{rows := [{{{true, '-infinity'},
-                              {true, infinity}}}]},pgo:query("SELECT tstzrange('-infinity','infinity', '[]');")),
+    ?assertMatch(#{rows := [{{{'-infinity', infinity},
+                              {true, true}}}]}, pgo:query("SELECT tstzrange('-infinity','infinity', '[]');")),
 
     ?assertMatch(#{command := create},
                  pgo:query("create temporary table foo_tstz_range (id integer primary key, some_range tstzrange)")),
     ?assertMatch(#{command := insert},
-                  pgo:query("insert into foo_tstz_range (id, some_range) values (1, $1)", [{{{2001, 1, 1}, {4, 10, 0}},
-                                                                                          {{2001, 1, 1}, {5, 10, 0.0}}}])),
-    ?assertMatch(#{rows := [{1, {{true, {{2001, 1, 1}, {4, 10, 0}}},
-                                 {true, {{2001, 1, 1}, {5, 10, 0}}}}}]},
+                 pgo:query("insert into foo_tstz_range (id, some_range) values (1, $1)", [{{{2001, 1, 1}, {4, 10, 0}},
+                                                                                           {{2001, 1, 1}, {5, 10, 0.0}}}])),
+    ?assertMatch(#{rows := [{1, {{{{2001, 1, 1}, {4, 10, 0}}, {{2001, 1, 1}, {5, 10, 0}}},
+                                 {true, true}}}]},
                  pgo:query("select * from foo_tstz_range order by id asc")),
 
     ok.
