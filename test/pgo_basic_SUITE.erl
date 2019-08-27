@@ -26,7 +26,7 @@ cases() ->
      json_jsonb, types, validate_telemetry,
      int4_range, ts_range, tstz_range, numerics,
      hstore, records, circle, path, polygon, line,
-     line_segment, tid, bit_string, arrays].
+     line_segment, tid, bit_string, arrays, tsvector].
 
 init_per_suite(Config) ->
     application:load(pg_types),
@@ -399,3 +399,17 @@ bit_string(_Config) ->
 
 arrays(_Config) ->
     ?assertMatch(#{rows := [{[<<"s1">>,null]}]}, pgo:query("SELECT $1::text[]", [[<<"s1">>, null]])).
+
+tsvector(_Config) ->
+    ?assertMatch(#{rows := [{[{<<"fat">>,[{2,null}]},{<<"rat">>,[{3,null}]}]}]},
+                 pgo:query("SELECT to_tsvector('english', 'The Fat Rats')")),
+    ?assertMatch(#{rows := [{[{<<"a">>,[{1,'A'}]},
+                              {<<"cat">>,[{5,null}]},
+                              {<<"fat">>,[{2,'B'},{4,'C'}]}]}]},
+                 pgo:query("SELECT 'a:1A fat:2B,4C cat:5D'::tsvector")),
+    ?assertMatch(#{rows := [{[{<<"a">>,[{1,'A'}]},
+                              {<<"cat">>,[{5,null}]},
+                              {<<"fat">>,[{2,'B'},{4,'C'}]}]}]},
+                 pgo:query("SELECT $1::tsvector", [[{<<"a">>,[{1,'A'}]},
+                                                    {<<"cat">>,[{5,null}]},
+                                                    {<<"fat">>,[{2,'B'},{4,'C'}]}]])).
