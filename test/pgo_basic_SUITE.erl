@@ -301,7 +301,7 @@ types(_Config) ->
     R3 = pgo:query("select a_text from types where id IN ($1, $2) order by id", [17, 18]),
     ?assertMatch(#{command := select, rows := [_Row17, _Row18]}, R3),
     #{command := select, rows := [Row17, Row18]} = R3,
-    ?assertMatch({?TXT_UUID}, Row17),
+    ?assertMatch({?BIN_UUID}, Row17),
     ?assertMatch({?TXT_UUID}, Row18).
 
 numerics(_Config) ->
