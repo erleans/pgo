@@ -133,7 +133,8 @@ A [Telemetry](https://github.com/beam-telemetry/telemetry) event `[pgo, query]` 
 > pgo:start_pool(default, #{host => "127.0.0.1", 
                             database => "test", 
                             user => "test",
-                            pool_size => 5}]). 
+                            pool_size => 5,
+                            trace_default => true}]). 
 ```
 
 Or by passing `#{trace => true}` in the options for a query or transaction:
