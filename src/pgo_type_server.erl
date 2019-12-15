@@ -26,8 +26,6 @@ reload_cast(Pid) ->
     gen_statem:cast(Pid, {reload, erlang:monotonic_time()}).
 
 init([Pool, PoolConfig]) ->
-    erlang:process_flag(trap_exit, true),
-    ets:new(Pool, [named_table, protected, {keypos, 2}]),
     {ok, ready, #data{pool=Pool, pool_config=PoolConfig},
      {next_event, internal, load}}.
 
@@ -57,8 +55,9 @@ ready(cast, {reload, RequestTime}, Data=#data{pool=Pool,
 ready(_, _, _Data) ->
     keep_state_and_data.
 
-terminate(_, _, #data{pool=Pool}) ->
-    ets:delete(Pool).
+terminate(_, _, _Data) ->
+    %% TODO: add trap_exit and tell pg_types to erase all pool data?
+    ok.
 
 load(Pool, LastReload, RequestTime, PoolConfig) when LastReload < RequestTime ->
     try pgo_handler:open(Pool, PoolConfig) of

@@ -301,7 +301,7 @@ types(_Config) ->
     R3 = pgo:query("select a_text from types where id IN ($1, $2) order by id", [17, 18]),
     ?assertMatch(#{command := select, rows := [_Row17, _Row18]}, R3),
     #{command := select, rows := [Row17, Row18]} = R3,
-    ?assertMatch({?BIN_UUID}, Row17),
+    ?assertMatch({?TXT_UUID}, Row17),
     ?assertMatch({?TXT_UUID}, Row18).
 
 numerics(_Config) ->
@@ -352,7 +352,8 @@ records(_Config) ->
     pgo:query("DROP TABLE IF EXISTS composite1"),
     #{command := create} = pgo:query("CREATE TABLE composite1 (a int, b text)"),
 
-    ?assertMatch(#{rows := [{{1, <<"2">>}}]},pgo:query("SELECT (1, '2')::composite1", [])),
+    ?assertMatch(#{rows := [{{null, null}}]}, pgo:query("SELECT (NULL, NULL)", [])),
+    ?assertMatch(#{rows := [{{1, <<"2">>}}]}, pgo:query("SELECT (1, '2')::composite1", [])),
     ?assertMatch(#{rows := [{[{1, <<"2">>}]}]}, pgo:query("SELECT ARRAY[(1, '2')::composite1]", [])),
 
     ?assertMatch(#{rows := [{{null, <<"2">>}}]},pgo:query("SELECT $1::composite1", [{null, <<"2">>}])),

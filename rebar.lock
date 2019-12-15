@@ -1,10 +1,10 @@
 {"1.1.0",
 [{<<"backoff">>,{pkg,<<"backoff">>,<<"1.1.6">>},0},
- {<<"pg_types">>,{pkg,<<"pg_types">>,<<"0.1.0">>},0},
+ {<<"pg_types">>,{pkg,<<"pg_types">>,<<"0.2.0">>},0},
  {<<"telemetry">>,{pkg,<<"telemetry">>,<<"0.4.0">>},0}]}.
 [
 {pkg_hash,[
  {<<"backoff">>, <<"83B72ED2108BA1EE8F7D1C22E0B4A00CFE3593A67DBC792799E8CCE9F42F796B">>},
- {<<"pg_types">>, <<"06044A3F169B8291EEFBDE787103F66674E6062CC490882700542C0077117760">>},
+ {<<"pg_types">>, <<"B73A0409CB94183226547EDF10793F6B3AD00E098B8D70354EF3886C0F95F2F6">>},
  {<<"telemetry">>, <<"8339BEE3FA8B91CB84D14C2935F8ECF399CCD87301AD6DA6B71C09553834B2AB">>}]}
 ].
