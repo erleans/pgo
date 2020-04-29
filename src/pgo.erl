@@ -66,7 +66,8 @@
                          %% defaults for options used at query time
                          queue => boolean(),
                          trace => boolean(),
-                         decode_opts => [decode_option()]}.
+                         decode_opts => [decode_option()]} |
+                       list({atom(), string() | integer() | boolean()}).
 
 %% @doc Starts connection pool as a child of pgo_sup.
 -spec start_pool(pool(), pool_config()) -> {ok, pid()}.
