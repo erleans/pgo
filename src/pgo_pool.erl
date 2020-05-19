@@ -99,7 +99,7 @@ init({Pool, PoolConfig}) ->
     {ok, {busy, QueueTid, Codel1}}.
 
 normalize_pool_config(PoolConfig) when is_list(PoolConfig) ->
-    maps:from_list(PoolConfig);
+    normalize_pool_config(maps:from_list(PoolConfig));
 normalize_pool_config(PoolConfig) ->
     maps:map(fun normalize_pool_config_value/2, PoolConfig).
 
