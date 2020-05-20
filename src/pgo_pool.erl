@@ -41,7 +41,8 @@ tid(Pool) ->
 -endif.
 
 start_link(Pool, PoolConfig) ->
-    gen_server:start_link({local, Pool}, ?MODULE, {Pool, PoolConfig}, []).
+    PoolConfig1 = normalize_pool_config(PoolConfig),
+    gen_server:start_link({local, Pool}, ?MODULE, {Pool, PoolConfig1}, []).
 
 -spec checkout(atom(), list()) -> {ok, ref(), conn()} | {error, any()}.
 checkout(Pool, Opts) ->
@@ -96,6 +97,16 @@ init({Pool, PoolConfig}) ->
               next => Now, poll => undefined, idle_interval => IdleInterval, idle => undefined},
     Codel1 = start_idle(Now, Now, start_poll(Now, Now, Codel)),
     {ok, {busy, QueueTid, Codel1}}.
+
+normalize_pool_config(PoolConfig) when is_list(PoolConfig) ->
+    normalize_pool_config(maps:from_list(PoolConfig));
+normalize_pool_config(PoolConfig) ->
+    maps:map(fun normalize_pool_config_value/2, PoolConfig).
+
+normalize_pool_config_value(_, V) when is_binary(V) ->
+    binary_to_list(V);
+normalize_pool_config_value(_, V) ->
+    V.
 
 handle_call(tid, _From, {_, Queue, _} = D) ->
     {reply, Queue, D}.
