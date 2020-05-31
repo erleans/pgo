@@ -143,6 +143,12 @@ tstz_range(_Config) ->
                                  {true, true}}}]},
                  pgo:query("select * from foo_tstz_range order by id asc")),
 
+    ?assertMatch(#{rows := [{{{{{2020,1,1},{0,0,0}},infinity},{true,false}}}]},
+                 pgo:query(<<"SELECT tstzrange($1, $2, '[)');">>, [{{2020,1,1},{0,0,0}}, infinity])),
+
+    ?assertMatch(#{rows := [{{{'-infinity',{{2020,1,1},{0,0,0}}},{true,false}}}]},
+                 pgo:query(<<"SELECT tstzrange($1, $2, '[)');">>, ['-infinity', {{2020,1,1},{0,0,0}}])),
+
     ok.
 
 validate_telemetry(_Config) ->

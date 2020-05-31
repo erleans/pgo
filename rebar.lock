@@ -1,10 +1,15 @@
-{"1.1.0",
+{"1.2.0",
 [{<<"backoff">>,{pkg,<<"backoff">>,<<"1.1.6">>},0},
- {<<"pg_types">>,{pkg,<<"pg_types">>,<<"0.2.0">>},0},
+ {<<"pg_types">>,
+  {git,"https://github.com/tsloughter/pg_types.git",
+       {ref,"da90025818be90bcbf626c5863dc3867a9b5a32a"}},
+  0},
  {<<"telemetry">>,{pkg,<<"telemetry">>,<<"0.4.0">>},0}]}.
 [
 {pkg_hash,[
  {<<"backoff">>, <<"83B72ED2108BA1EE8F7D1C22E0B4A00CFE3593A67DBC792799E8CCE9F42F796B">>},
- {<<"pg_types">>, <<"B73A0409CB94183226547EDF10793F6B3AD00E098B8D70354EF3886C0F95F2F6">>},
- {<<"telemetry">>, <<"8339BEE3FA8B91CB84D14C2935F8ECF399CCD87301AD6DA6B71C09553834B2AB">>}]}
+ {<<"telemetry">>, <<"8339BEE3FA8B91CB84D14C2935F8ECF399CCD87301AD6DA6B71C09553834B2AB">>}]},
+{pkg_hash_ext,[
+ {<<"backoff">>, <<"CF0CFFF8995FB20562F822E5CC47D8CCF664C5ECDC26A684CBE85C225F9D7C39">>},
+ {<<"telemetry">>, <<"E9E3CACFD37C1531C0CA70CA7C0C30CE2DBB02998A4F7719DE180FE63F8D41E4">>}]}
 ].
