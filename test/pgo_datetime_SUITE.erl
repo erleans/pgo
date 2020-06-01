@@ -59,4 +59,17 @@ interval(_Config) ->
 
     ?assertMatch(#{command := select,
                   rows := [{{{2012,1,17},{10,54,3.45}}, {{2012,1,20},{10,54,3.45}}}]},
-                 pgo:query("select a_timestamp, b_timestamp from interval_times where b_timestamp - a_timestamp < $1", [{interval, {0, 5, 0}}])).
+                 pgo:query("select a_timestamp, b_timestamp from interval_times where b_timestamp - a_timestamp < $1", [{interval, {0, 5, 0}}])),
+
+    ?assertMatch(#{command := select,
+                   rows := [{{interval, {{3,2,1}, 5, 0}}}]},
+                 pgo:query("select $1::interval", [{interval, {{3,2,1}, 5, 0}}])),
+
+    ?assertMatch(#{rows := [{{interval, {{0,0,0}, 7, 0}}}]},
+                 pgo:query(<<"SELECT '7 days'::interval">>)),
+    ?assertMatch(#{rows := [{{interval, {{0,0,0}, 0, 7}}}]},
+                 pgo:query(<<"SELECT '7 months'::interval">>)),
+    ?assertMatch(#{rows := [{{interval, {{0,0,0}, 0, 84}}}]},
+                 pgo:query(<<"SELECT '7 years'::interval">>)),
+    ?assertMatch(#{rows := [{{interval, {{3,2,1}, 4, 77}}}]},
+                 pgo:query(<<"SELECT '6 years 5 months 4 days 3 hours 2 minutes 1 second'::interval">>)).
