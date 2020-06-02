@@ -271,7 +271,7 @@ extended_query(Conn=#conn{socket=Socket,
                       case encode_bind_describe_execute(Conn, Parameters, DataTypes) of
                           {ok, BindExecute} ->
                               {ok, [ParseMessage, BindExecute], parse_complete};
-                          {error, _} = Error ->
+                          {_, _} = Error ->
                               Error
                       end;
                   not_found ->
@@ -300,11 +300,11 @@ extended_query(Conn=#conn{socket=Socket,
                 {error, _} = SendSinglePacketError ->
                     SendSinglePacketError
             end;
-        {error, _} ->
+        {_, _} ->
             PacketT
     end.
 
--spec encode_bind_describe_execute(pgo_pool:conn(), [any()], [oid()]) -> {ok, iodata()} | {error, any()}.
+-spec encode_bind_describe_execute(pgo_pool:conn(), [any()], [oid()]) -> {ok, iodata()} | {term(), any()}.
 encode_bind_describe_execute(Conn, Parameters, ParameterDataTypes) ->
     DescribeMessage = pgo_protocol:encode_describe_message(portal, ""),
     ExecuteMessage = pgo_protocol:encode_execute_message("", 0),
@@ -314,10 +314,8 @@ encode_bind_describe_execute(Conn, Parameters, ParameterDataTypes) ->
         SinglePacket = [BindMessage, DescribeMessage, ExecuteMessage, SyncOrFlushMessage],
         {ok, SinglePacket}
     catch
-        Class:Exception:Stacktrace ->
-            ?LOG_INFO("error encoding bind message class=~s exception~s stacktrace=~p",
-                      [Class, Exception, Stacktrace]),
-            {error, Exception}
+        Class:Exception ->
+            {Class, Exception}
     end.
 
 %% requires_statement_description(_Parameters) ->
@@ -360,7 +358,7 @@ receive_loop0(#parameter_description{data_types=ParameterDataTypes},
                 {error, _} = SendError ->
                     SendError
             end;
-        {error, _} = Error ->
+        {_, _} = Error ->
             case SocketModule:send(Socket, pgo_protocol:encode_sync_message()) of
                 ok -> flush_until_ready_for_query(Error, Conn);
                 {error, _} = SendSyncPacketError -> SendSyncPacketError
@@ -424,8 +422,7 @@ receive_loop0(#error_response{fields = Fields}, LoopState, _Fun, _Acc0, _DecodeO
             flush_until_ready_for_query(Error, Conn)
     end;
 receive_loop0(#ready_for_query{} = Message, _LoopState, _Fun, _Acc0, _DecodeOptions, _Conn) ->
-    Result = {error, {unexpected_message, Message}},
-    Result;
+    {error, {unexpected_message, Message}};
 receive_loop0(Message, _LoopState, _Fun, _Acc0, _DecodeOptions, Conn=#conn{socket=Socket,
                                                                            socket_module=SocketModule}) ->
     SocketModule:send(Socket, pgo_protocol:encode_sync_message()),

@@ -22,8 +22,8 @@ groups() ->
      {ssl, [shuffle, parallel], cases()}].
 
 cases() ->
-    [select, insert_update, text_types, rows_as_maps,
-     json_jsonb, types, validate_telemetry,
+    [exceptions, select, insert_update, text_types,
+     rows_as_maps, json_jsonb, types, validate_telemetry,
      int4_range, ts_range, tstz_range, numerics,
      hstore, records, circle, path, polygon, line,
      line_segment, tid, bit_string, arrays, tsvector].
@@ -167,6 +167,12 @@ validate_telemetry(_Config) ->
         500 ->
             ct:fail(timeout)
     end.
+
+exceptions(_Config) ->
+    {error, Reason} = pgo:query("select $1::interval", [none]),
+    ?assertMatch("Error encoding type interval. Expected, {interval {{Hours::integer(), Minutes::integer(), Seconds::integer()}, Days::integer(), months::integer()}}. Got, none.", lists:flatten(pgo:format_error(Reason))),
+
+    ok.
 
 select(_Config) ->
     {error, {Module, Reason}} = pgo:query("select $1", []),

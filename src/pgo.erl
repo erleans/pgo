@@ -20,7 +20,8 @@
          checkout/1,
          checkout/2,
          checkin/2,
-         break/1]).
+         break/1,
+         format_error/1]).
 
 -include("pgo_internal.hrl").
 
@@ -33,7 +34,7 @@
                     num_rows := integer(),
                     rows := list()} | {error, error()} | {error, any()}.
 
--type error() :: {pgo_error, #{error_field() => binary()}}.
+-type error() :: {pgo_error, #{error_field() => binary()}} | pg_types:encoding_error().
 
 -type pool() :: atom().
 
@@ -218,3 +219,8 @@ checkin(Ref, Conn) ->
 -spec break(pgo_pool:conn()) -> ok.
 break(Conn) ->
     pgo_connection:break(Conn).
+
+format_error(Error=#{module := Module}) ->
+    Module:format_error(Error);
+format_error(Error) ->
+    io_lib:format("Unknown error: ~p", [Error]).
