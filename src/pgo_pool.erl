@@ -382,7 +382,7 @@ stop_holder(Holder, Err) ->
     delete_holder(Holder, Err).
 
 delete_holder(Holder, Err) ->
-    [{_, Conn, Deadline, State}] = ets:lookup(Holder, ?HOLDER_KEY),
+    [{_, Conn, Deadline, _, State}] = ets:lookup(Holder, ?HOLDER_KEY),
     ets:delete(Holder),
     cancel_deadline(Deadline),
     pgo_connection:disconnect(Conn, Holder, Err, State).
