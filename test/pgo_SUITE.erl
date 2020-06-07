@@ -13,7 +13,7 @@
 -define(UNTIL(X), (fun Until(I) when I =:= 10 -> erlang:error(fail);
                        Until(I) -> case X of true -> ok; false -> timer:sleep(10), Until(I+1) end end)(0)).
 
-all() -> [checkout_checkin, checkout_break, checkout_kill, checkout_query_crash].
+all() -> [checkout_checkin, checkout_break, checkout_kill, checkout_disconnect, checkout_query_crash].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
@@ -106,6 +106,21 @@ checkout_kill(Config) ->
     {ok, _Ref1, #conn{owner=Pid1}} = pgo:checkout(Name),
 
     erlang:exit(Socket, kill),
+    ?UNTIL((catch ets:info(Tid, size)) =:= 9),
+
+    erlang:exit(Pid1, kill),
+    ?UNTIL((catch ets:info(Tid, size)) =:= 10),
+
+    ok.
+
+checkout_disconnect(Config) ->
+    Name = ?config(pool_name, Config),
+    Tid = pgo_pool:tid(Name),
+
+    {ok, Ref, Conn} = pgo:checkout(Name),
+    {ok, _Ref1, #conn{owner=Pid1}} = pgo:checkout(Name),
+
+    pgo_pool:disconnect(Ref, some_error, Conn, []),
     ?UNTIL((catch ets:info(Tid, size)) =:= 9),
 
     erlang:exit(Pid1, kill),
