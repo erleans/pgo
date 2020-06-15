@@ -151,9 +151,11 @@ transaction(Pool, Fun, Options) ->
                                                                            #{queue_time => undefined}),
                         put(pgo_transaction_connection, Conn),
                         Result = Fun(),
-                        #{command := commit} = pgo_handler:extended_query(Conn, "COMMIT", [],
-                                                                          #{queue_time => undefined}),
-                        Result
+                        case pgo_handler:extended_query(Conn, "COMMIT", [],
+                                                        #{queue_time => undefined}) of
+                            #{command := commit} -> Result;
+                            #{command := rollback} -> Result
+                        end
                     catch
                         ?WITH_STACKTRACE(T, R, S)
                         pgo_handler:extended_query(Conn, "ROLLBACK", [], #{queue_time => undefined}),
