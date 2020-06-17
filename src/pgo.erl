@@ -31,7 +31,7 @@
               decode_fun/0]).
 
 -type result() :: #{command := atom(),
-                    num_rows := integer(),
+                    num_rows := integer() | table,
                     rows := list()} | {error, error()} | {error, any()}.
 
 -type error() :: {pgo_error, #{error_field() => binary()}} | pg_types:encoding_error().
