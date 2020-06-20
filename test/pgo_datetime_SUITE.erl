@@ -6,10 +6,11 @@
 -include_lib("stdlib/include/assert.hrl").
 
 all() ->
-    [{group, erl_datetime}, {group, as_integer}, {group, as_float}].
+    [{group, erl_datetime}, {group, as_integer}, {group, as_float}, {group, as_micro}].
 
 groups() ->
     [{erl_datetime, [], [select, insert, interval]},
+     {as_micro, [], [as_micro]},
      {as_integer, [], [as_integer]},
      {as_float, [], [as_float]}].
 
@@ -23,6 +24,15 @@ init_per_group(erl_datetime, Config) ->
     application:load(pg_types),
     application:set_env(pg_types, timestamp_config, []),
 
+    application:ensure_all_started(pgo),
+
+    {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
+                                             database => "test",
+                                             user => "test"}),
+    Config;
+init_per_group(as_micro, Config) ->
+    application:load(pg_types),
+    application:set_env(pg_types, timestamp_config, integer_system_time_microseconds),
     application:ensure_all_started(pgo),
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
@@ -109,24 +119,36 @@ interval(_Config) ->
 
 as_integer(_Config) ->
     ?assertMatch(#{command := create},
-                 pgo:query("create temporary table times (a_timestamp timestamp, a_time time)")),
+                 pgo:query("create temporary table times (a_timestamp timestamp, b_timestamp timestamp)")),
 
     ?assertMatch(#{command := insert},
-                 pgo:query("insert into times (a_timestamp, a_time) VALUES ($1, $2)",
-                           [{{2012,1,17},{10,54,3.45}}, {10,54,3.45}])),
+                 pgo:query("insert into times (a_timestamp, b_timestamp) VALUES ($1, $2)",
+                           [{{2012,1,17},{10,54,3.45}}, 1326797643 * 1000000])),
 
     ?assertMatch(#{command := select,
-                  rows := [{1326797643, {10,54,3.45}}]},
-                 pgo:query("select a_timestamp, a_time from times")).
+                  rows := [{1326797643, 1326797643}]},
+                 pgo:query("select a_timestamp, b_timestamp from times")).
 
 as_float(_Config) ->
     ?assertMatch(#{command := create},
-                 pgo:query("create temporary table times (a_timestamp timestamp, a_time time)")),
+                 pgo:query("create temporary table times (a_timestamp timestamp, b_timestamp timestamp)")),
 
     ?assertMatch(#{command := insert},
-                 pgo:query("insert into times (a_timestamp, a_time) VALUES ($1, $2)",
-                           [{{2012,1,17},{10,54,3.45}}, {10,54,3.45}])),
+                 pgo:query("insert into times (a_timestamp, b_timestamp) VALUES ($1, $2)",
+                           [{{2012,1,17},{10,54,3.45}}, 1326797643 * 1000000])),
 
     ?assertMatch(#{command := select,
-                  rows := [{1326797643.45, {10,54,3.45}}]},
-                 pgo:query("select a_timestamp, a_time from times")).
+                   rows := [{1326797643.45, 1326797643.0}]},
+                 pgo:query("select a_timestamp, b_timestamp from times")).
+
+as_micro(_Config) ->
+    ?assertMatch(#{command := create},
+                 pgo:query("create temporary table times (a_timestamp timestamp, b_timestamp timestamp)")),
+
+    ?assertMatch(#{command := insert},
+                 pgo:query("insert into times (a_timestamp, b_timestamp) VALUES ($1, $2)",
+                           [{{2012,1,17},{10,54,3.45}}, 1326797643450000])),
+
+    ?assertMatch(#{command := select,
+                  rows := [{1326797643450000, 1326797643450000}]},
+                 pgo:query("select a_timestamp, b_timestamp from times")).
