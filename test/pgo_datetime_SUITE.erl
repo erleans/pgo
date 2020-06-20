@@ -5,18 +5,50 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
-all() -> [select, insert, interval].
+all() ->
+    [{group, erl_datetime}, {group, as_integer}, {group, as_float}].
+
+groups() ->
+    [{erl_datetime, [], [select, insert, interval]},
+     {as_integer, [], [as_integer]},
+     {as_float, [], [as_float]}].
 
 init_per_suite(Config) ->
+    Config.
+
+end_per_suite(_Config) ->
+    ok.
+
+init_per_group(erl_datetime, Config) ->
+    application:load(pg_types),
+    application:set_env(pg_types, timestamp_config, []),
+
     application:ensure_all_started(pgo),
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
                                              database => "test",
                                              user => "test"}),
+    Config;
+init_per_group(as_integer, Config) ->
+    application:load(pg_types),
+    application:set_env(pg_types, timestamp_config, integer_system_time_seconds),
+    application:ensure_all_started(pgo),
 
+    {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
+                                             database => "test",
+                                             user => "test"}),
+    Config;
+init_per_group(as_float, Config) ->
+    application:load(pg_types),
+    application:set_env(pg_types, timestamp_config, float_system_time_seconds),
+    application:ensure_all_started(pgo),
+
+    {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
+                                             database => "test",
+                                             user => "test"}),
     Config.
 
-end_per_suite(_Config) ->
+end_per_group(_, _Config) ->
     application:stop(pgo),
     ok.
 
@@ -73,3 +105,28 @@ interval(_Config) ->
                  pgo:query(<<"SELECT '7 years'::interval">>)),
     ?assertMatch(#{rows := [{{interval, {{3,2,1}, 4, 77}}}]},
                  pgo:query(<<"SELECT '6 years 5 months 4 days 3 hours 2 minutes 1 second'::interval">>)).
+
+
+as_integer(_Config) ->
+    ?assertMatch(#{command := create},
+                 pgo:query("create temporary table times (a_timestamp timestamp, a_time time)")),
+
+    ?assertMatch(#{command := insert},
+                 pgo:query("insert into times (a_timestamp, a_time) VALUES ($1, $2)",
+                           [{{2012,1,17},{10,54,3.45}}, {10,54,3.45}])),
+
+    ?assertMatch(#{command := select,
+                  rows := [{1326797643, {10,54,3.45}}]},
+                 pgo:query("select a_timestamp, a_time from times")).
+
+as_float(_Config) ->
+    ?assertMatch(#{command := create},
+                 pgo:query("create temporary table times (a_timestamp timestamp, a_time time)")),
+
+    ?assertMatch(#{command := insert},
+                 pgo:query("insert into times (a_timestamp, a_time) VALUES ($1, $2)",
+                           [{{2012,1,17},{10,54,3.45}}, {10,54,3.45}])),
+
+    ?assertMatch(#{command := select,
+                  rows := [{1326797643.45, {10,54,3.45}}]},
+                 pgo:query("select a_timestamp, a_time from times")).
