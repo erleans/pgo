@@ -1,5 +1,10 @@
 {"1.2.0",
 [{<<"backoff">>,{pkg,<<"backoff">>,<<"1.1.6">>},0},
+ {<<"opentelemetry_api">>,
+  {git_subdir,"https://github.com/open-telemetry/opentelemetry-erlang",
+              {ref,"0e448fd368bce65f812b8d8fea6f345176ce6ad0"},
+              "apps/opentelemetry_api"},
+  0},
  {<<"pg_types">>,{pkg,<<"pg_types">>,<<"0.4.0">>},0},
  {<<"telemetry">>,{pkg,<<"telemetry">>,<<"0.4.2">>},0}]}.
 [

@@ -13,6 +13,9 @@
 %%====================================================================
 
 start(_StartType, _StartArgs) ->
+    {ok, Vsn} = application:get_key(pgo, vsn),
+    _ = opentelemetry:register_tracer(pgo, Vsn),
+
     pgo_query_cache:start_link(),
     Pools = application:get_env(pgo, pools, []),
     {ok, Pid} = pgo_sup:start_link(),

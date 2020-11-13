@@ -97,15 +97,15 @@ query(Query, Params, Options) ->
                 {ok, Ref, Conn=#conn{trace=TraceDefault,
                                      decode_opts=DefaultDecodeOpts}} ->
                     DoTrace = maps:get(trace, Options, TraceDefault),
-                    {SpanCtx, ParentCtx} = maybe_start_span(DoTrace,
-                                                            <<"pgo:query/3">>,
-                                                            #{attributes => #{<<"query">> => Query}}),
+                    {SpanCtx, OriginalCtx} = maybe_start_span(DoTrace,
+                                                              <<"pgo:query/3">>,
+                                                              #{attributes => [<<"query">>, Query]}),
                     try
                         pgo_handler:extended_query(Conn, Query, Params,
                                                    DecodeOptions ++ DefaultDecodeOpts,
                                                    #{queue_time => undefined})
                     after
-                        maybe_finish_span(DoTrace, SpanCtx, ParentCtx),
+                        maybe_end_span(DoTrace, SpanCtx, OriginalCtx),
                         checkin(Ref, Conn)
                     end;
                 {error, _}=E ->
@@ -143,9 +143,9 @@ transaction(Pool, Fun, Options) ->
             case checkout(Pool, PoolOptions) of
                 {ok, Ref, Conn=#conn{trace=TraceDefault}} ->
                     DoTrace = maps:get(trace, Options, TraceDefault),
-                    {SpanCtx, ParentCtx} = maybe_start_span(DoTrace,
-                                                            <<"pgo:transaction/2">>,
-                                                            #{}),
+                    {SpanCtx, OriginalCtx} = maybe_start_span(DoTrace,
+                                                              <<"pgo:transaction/2">>,
+                                                              #{}),
                     try
                         #{command := 'begin'} = pgo_handler:extended_query(Conn, "BEGIN", [],
                                                                            #{queue_time => undefined}),
@@ -161,7 +161,7 @@ transaction(Pool, Fun, Options) ->
                         pgo_handler:extended_query(Conn, "ROLLBACK", [], #{queue_time => undefined}),
                         erlang:raise(T, R, S)
                     after
-                        maybe_finish_span(DoTrace, SpanCtx, ParentCtx),
+                        maybe_end_span(DoTrace, SpanCtx, OriginalCtx),
                         checkin(Ref, Conn),
                         erase(pgo_transaction_connection)
                     end;
@@ -176,17 +176,21 @@ transaction(Pool, Fun, Options) ->
 
 maybe_start_span(false, _, _) ->
     {undefined, undefined};
-maybe_start_span(true, Name, Attributes) ->
-    CurrentSpanCtx = ocp:current_span_ctx(),
-    NewSpanCtx = oc_trace:start_span(Name, ocp:current_span_ctx(), Attributes),
-    ocp:with_span_ctx(NewSpanCtx),
-    {NewSpanCtx, CurrentSpanCtx}.
+maybe_start_span(true, Name, Opts) ->
+    Tracer = opentelemetry:get_tracer(?MODULE),
+    CurrentCtx = otel_ctx:get_current(),
 
-maybe_finish_span(false, _, _) ->
+    {SpanCtx, _} = otel_tracer:start_span(CurrentCtx, Tracer, Name, Opts),
+    NewCtx = otel_tracer:set_current_span(SpanCtx),
+    otel_ctx:attach(NewCtx),
+
+    {SpanCtx, CurrentCtx}.
+
+maybe_end_span(false, _, _) ->
     undefined;
-maybe_finish_span(true, SpanCtx, ParentCtx) ->
-    oc_trace:finish_span(SpanCtx),
-    ocp:with_span_ctx(ParentCtx).
+maybe_end_span(true, SpanCtx, OriginalCtx) ->
+    _ = otel_span:end_span(SpanCtx),
+    otel_ctx:attach(OriginalCtx).
 
 with_conn(Conn, Fun) ->
     case get(pgo_transaction_connection) of
