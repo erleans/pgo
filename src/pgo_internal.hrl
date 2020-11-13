@@ -11,6 +11,7 @@
                parameters :: map(),
                queue :: boolean(),
                trace :: boolean(),
+               trace_attributes :: [],
                decode_opts :: []}).
 
 % Backend messages

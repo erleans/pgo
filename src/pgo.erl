@@ -95,11 +95,13 @@ query(Query, Params, Options) ->
             PoolOptions = maps:get(pool_options, Options, []),
             case checkout(Pool, PoolOptions) of
                 {ok, Ref, Conn=#conn{trace=TraceDefault,
+                                     trace_attributes=TraceAttributes,
                                      decode_opts=DefaultDecodeOpts}} ->
                     DoTrace = maps:get(trace, Options, TraceDefault),
                     {SpanCtx, OriginalCtx} = maybe_start_span(DoTrace,
                                                               <<"pgo:query/3">>,
-                                                              #{attributes => [<<"query">>, Query]}),
+                                                              #{attributes => [{<<"statement">>, Query} |
+                                                                               TraceAttributes]}),
                     try
                         pgo_handler:extended_query(Conn, Query, Params,
                                                    DecodeOptions ++ DefaultDecodeOpts,

@@ -7,7 +7,7 @@ orbs:
 executors:
   erlang_postgres:
     docker:
-      - image: circleci/erlang:22
+      - image: circleci/erlang:23
         entrypoint: ["/bin/sh"]
       - image: circleci/postgres:11-alpine-ram
         environment:

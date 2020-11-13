@@ -103,6 +103,7 @@ open(Pool, PoolConfig) ->
     TraceDefault = maps:get(trace, PoolConfig, false),
     QueueDefault = maps:get(queue, PoolConfig, true),
     DefaultDecodeOpts = maps:get(decode_opts, PoolConfig, []),
+    User = maps:get(user, PoolConfig, ?DEFAULT_USER),
     case gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, false}]) of
         {ok, Socket} ->
             Conn = #conn{pool=Pool,
@@ -110,6 +111,13 @@ open(Pool, PoolConfig) ->
                          socket=Socket,
                          parameters=#{},
                          trace=TraceDefault,
+                         trace_attributes=[{<<"db.system">>, <<"postgresql">>},
+                                           {<<"db.name">>, maps:get(database, PoolConfig, User)},
+                                           %% {<<"db.connection_string">>, <<"">>},
+                                           {<<"db.user">>, User},
+                                           {<<"net.peer.name">>, Host},
+                                           {<<"net.peer.port">>, Port},
+                                           {<<"net.peer.transport">>, <<"IP.TCP">>}],
                          queue=QueueDefault,
                          socket_module=case maps:get(ssl, PoolConfig, undefined) of
                                            true -> ssl;
