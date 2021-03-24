@@ -46,11 +46,14 @@
                          column_name_as_atom | {column_name_as_atom, boolean()} |
                          {decode_fun, decode_fun()}.
 
--type pool_option() :: queue | {queue, boolean()}.
+-type pool_option() :: queue |
+                       {queue, boolean()} |
+                       {timeout, non_neg_integer()}.
 -type options() :: #{pool => atom(),
                      trace => boolean(),
                      queue => boolean(),
-                     decode_opts => [decode_option()]}.
+                     decode_opts => [decode_option()],
+                     pool_options => [pool_option()]}.
 
 -type pool_config() :: #{host => string(),
                          port => integer(),
