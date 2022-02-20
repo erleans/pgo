@@ -100,10 +100,11 @@ close(#conn{socket=Socket}) ->
 open(Pool, PoolConfig) ->
     Host = maps:get(host, PoolConfig, ?DEFAULT_HOST),
     Port = maps:get(port, PoolConfig, ?DEFAULT_PORT),
+    SockOpts = maps:get(socket_options, PoolConfig, []),
     TraceDefault = maps:get(trace, PoolConfig, false),
     QueueDefault = maps:get(queue, PoolConfig, true),
     DefaultDecodeOpts = maps:get(decode_opts, PoolConfig, []),
-    case gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, false}]) of
+    case gen_tcp:connect(Host, Port, SockOpts ++ [binary, {packet, raw}, {active, false}]) of
         {ok, Socket} ->
             Conn = #conn{pool=Pool,
                          owner=self(),

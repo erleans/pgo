@@ -76,6 +76,9 @@ Pool configuration includes the Postgres connection information, pool configurat
   queue_interval => integer(),
   idle_interval => integer(),
 
+  %% gen_tcp socket options
+  socket_options => [gen_tcp:socket_option()],
+
   %% defaults for options used at query time
   queue => boolean(),
   trace => boolean(),
@@ -122,6 +125,10 @@ decode_option() :: return_rows_as_maps | {return_rows_as_maps, boolean()} |
 * `pool_size` (default: 1): Number of connections to keep open with the database
 * `queue_target` (default: 50) and `queue_interval` (default: 1000): Checking out connections is handled through a queue. If it takes longer than `queue_target` to get out of the queue for longer than `queue_interval` then the `queue_target` will be doubled and checkouts will start to be dropped if that target is surpassed.
 * `idle_interval` (default: 1000): The database is pinged every `idle_interval` when the connection is idle.
+
+### Erlang TCP Socket Settings
+
+* `socket_options` (default `[]`): Addition options to pass to `gen_tcp:connect` such as `inet6` for IPv6 support.
 
 ## Telemetry and Tracing
 
