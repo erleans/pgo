@@ -64,6 +64,9 @@
                          queue_interval => integer(),
                          idle_interval => integer(),
 
+                         %% gen_tcp socket options
+                         socket_options => [gen_tcp:socket_option()],
+
                          %% defaults for options used at query time
                          queue => boolean(),
                          trace => boolean(),
