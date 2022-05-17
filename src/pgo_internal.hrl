@@ -238,6 +238,15 @@
 -record(authentication_md5_password, {
     salt :: binary()
 }).
+-record(authentication_sasl_password, {
+    methods :: binary()
+}).
+-record(authentication_server_first_message, {
+    first_msg :: binary()
+}).
+-record(authentication_server_final_message, {
+    final_msg :: binary()
+}).
 -record(authentication_scm_credential, {}).
 -record(authentication_gss, {}).
 -record(authentication_sspi, {}).
@@ -325,6 +334,9 @@
         #authentication_gss{} |
         #authentication_kerberos_v5{} |
         #authentication_md5_password{} |
+        #authentication_sasl_password{} |
+        #authentication_server_final_message{} |
+        #authentication_server_first_message{} |
         #authentication_ok{} |
         #authentication_scm_credential{} |
         #authentication_sspi{} |

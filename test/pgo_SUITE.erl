@@ -9,6 +9,7 @@
 
 -define(DATABASE, "test").
 -define(USER, "test").
+-define(PASSWORD, "password").
 
 -define(UNTIL(X), (fun Until(I) when I =:= 10 -> erlang:error(fail);
                        Until(I) -> case X of true -> ok; false -> timer:sleep(10), Until(I+1) end end)(0)).
@@ -27,7 +28,8 @@ init_per_testcase(T, Config) when T =:= checkout_break ->
     Name = pool_break,
     pgo_sup:start_child(Name, #{pool_size => 1,
                                 database => ?DATABASE,
-                                user => ?USER}),
+                                user => ?USER,
+                                password => ?PASSWORD}),
 
     Tid = pgo_pool:tid(Name),
     ?UNTIL((catch ets:info(Tid, size)) =:= 1),
@@ -37,7 +39,8 @@ init_per_testcase(T, Config) when T =:= checkout_query_crash ->
     Name = pool_query_crash,
     pgo_sup:start_child(Name, #{pool_size => 1,
                                 database => ?DATABASE,
-                                user => ?USER}),
+                                user => ?USER,
+                                password => ?PASSWORD}),
 
     Tid = pgo_pool:tid(Name),
     ?UNTIL((catch ets:info(Tid, size)) =:= 1),
@@ -47,7 +50,8 @@ init_per_testcase(checkout_kill, Config) ->
     Name = pool_kill,
     pgo_sup:start_child(Name, #{pool_size => 10,
                                 database => ?DATABASE,
-                                user => ?USER}),
+                                user => ?USER,
+                                password => ?PASSWORD}),
     Tid = pgo_pool:tid(Name),
     ?UNTIL((catch ets:info(Tid, size)) =:= 10),
 
@@ -56,7 +60,8 @@ init_per_testcase(_, Config) ->
     Name = pool_1,
     pgo_sup:start_child(Name, #{pool_size => 10,
                                 database => ?DATABASE,
-                                user => ?USER}),
+                                user => ?USER,
+                                password => ?PASSWORD}),
     Tid = pgo_pool:tid(Name),
     ?UNTIL((catch ets:info(Tid, size)) =:= 10),
 

@@ -13,6 +13,7 @@ init_per_suite(Config) ->
 
     {ok, _} = pgo_sup:start_child(default, #{database => "test",
                                              user => "test",
+                                             password => "password",
                                              pool_size => 1,
                                              decode_opts => [return_rows_as_maps]}),
 

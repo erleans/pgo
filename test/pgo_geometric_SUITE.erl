@@ -12,7 +12,8 @@ init_per_suite(Config) ->
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
                                              database => "test",
-                                             user => "test"}),
+                                             user => "test",
+                                             password => "password"}),
 
     Config.
 

@@ -28,7 +28,8 @@ init_per_group(erl_datetime, Config) ->
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
                                              database => "test",
-                                             user => "test"}),
+                                             user => "test",
+                                             password => "password"}),
     Config;
 init_per_group(as_micro, Config) ->
     application:load(pg_types),
@@ -37,7 +38,8 @@ init_per_group(as_micro, Config) ->
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
                                              database => "test",
-                                             user => "test"}),
+                                             user => "test",
+                                             password => "password"}),
     Config;
 init_per_group(as_integer, Config) ->
     application:load(pg_types),
@@ -46,7 +48,8 @@ init_per_group(as_integer, Config) ->
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
                                              database => "test",
-                                             user => "test"}),
+                                             user => "test",
+                                             password => "password"}),
     Config;
 init_per_group(as_float, Config) ->
     application:load(pg_types),
@@ -55,11 +58,14 @@ init_per_group(as_float, Config) ->
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
                                              database => "test",
-                                             user => "test"}),
+                                             user => "test",
+                                             password => "password"}),
     Config.
 
 end_per_group(_, _Config) ->
+    application:unset_env(pg_types, timestamp_config),
     application:stop(pgo),
+    application:unload(pg_types),
     ok.
 
 select(_Config) ->

@@ -14,13 +14,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        otp_version: ['24.1.2', '23.3.4.2', '22.3.4.20']
-        rebar3_version: ['3.16.1']
+        otp_version: ['24.3.4']
+        rebar3_version: ['3.18.0']
         os: [ubuntu-18.04]
-        include:
-          - otp_version: '22.3.4.20'
-            rebar3_version: '3.17.0'
-            os: ubuntu-18.04
     env:
       OTP_VERSION: ${{ matrix.otp_version }}
     steps:
@@ -31,7 +27,6 @@ jobs:
       with:
         otp-version: ${{ matrix.otp_version }}
         rebar3-version: ${{ matrix.rebar3_version }}
-        elixir-version: '1.11.1'
     - uses: actions/cache@v2
       name: Cache
       with:
@@ -66,13 +61,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        otp_version: ['24.1.2', '23.3.4.2', '22.3.4.20']
-        rebar3_version: ['3.17.0']
+        otp_version: ['24.4.4']
+        rebar3_version: ['3.18.0']
         os: [ubuntu-18.04]
-        include:
-          - otp_version: '22.3.4.20'
-            rebar3_version: '3.17.0'
-            os: ubuntu-18.04
     steps:
     - uses: actions/checkout@v2
     - uses: erlef/setup-beam@v1

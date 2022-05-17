@@ -43,7 +43,8 @@ init_per_group(clear, Config) ->
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
                                              port => 5432,
                                              database => "test",
-                                             user => "test"}),
+                                             user => "test",
+                                             password => "password"}),
 
     Config;
 init_per_group(ssl, Config) ->
@@ -53,7 +54,8 @@ init_per_group(ssl, Config) ->
                                              port => 5434,
                                              ssl => true,
                                              database => "test",
-                                             user => "test"}),
+                                             user => "test",
+                                             password => "password"}),
 
     Config.
 
