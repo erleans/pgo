@@ -9,7 +9,8 @@
          pool_name/1,
          reload_types/1,
          break/1,
-         break/2]).
+         break/2,
+         report_cb/1]).
 
 -export([init/1,
          callback_mode/0,
@@ -20,6 +21,7 @@
          terminate/3]).
 
 -include("pgo_internal.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -record(data, {monitor :: reference() | undefined,
                ref :: reference() | undefined,
@@ -120,9 +122,16 @@ handle_event(cast, {ping, Holder}, Data=#data{pool=Pool,
                                               holder=Holder,
                                               queue=QueueTid,
                                               conn=Conn}) ->
-    ok = pgo_handler:ping(Conn),
-    NewHolder = pgo_pool:update(Pool, QueueTid, ?MODULE, Conn),
-    {keep_state, Data#data{holder=NewHolder}};
+    case pgo_handler:ping(Conn) of
+        ok ->
+            NewHolder = pgo_pool:update(Pool, QueueTid, ?MODULE, Conn),
+            {keep_state, Data#data{holder=NewHolder}};
+        {error, Reason} ->
+            ?LOG_INFO(#{at => ping,
+                        reason => Reason},
+                      #{report_cb => fun ?MODULE:report_cb/1}),
+            close_and_reopen(Data)
+    end;
 handle_event(cast, {stop, Holder}, Data=#data{holder=Holder,
                                               conn=Conn}) ->
     pgo_handler:close(Conn),
@@ -157,3 +166,7 @@ close_and_reopen(Data=#data{conn=Conn}) ->
     {next_state, disconnected, Data#data{conn=undefined,
                                          holder=undefined},
      [{next_event, internal, connect}]}.
+
+report_cb(#{at := ping,
+            reason := Reason}) ->
+    {"disconnecting after database failed ping with reason ~p", [Reason]}.
