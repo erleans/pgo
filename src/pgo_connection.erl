@@ -97,12 +97,14 @@ disconnected(EventType, _, Data=#data{broker=Broker,
         _Error ->
             {Backoff, B1} = backoff:fail(B),
             {next_state, disconnected, Data#data{broker=Broker,
+                                                 holder=undefined,
                                                  backoff=B1},
              [{state_timeout, Backoff, connect}]}
     catch
         throw:_Reason ->
             {Backoff, B1} = backoff:fail(B),
             {next_state, disconnected, Data#data{broker=Broker,
+                                                 holder=undefined,
                                                  backoff=B1},
              [{state_timeout, Backoff, connect}]}
     end;
@@ -130,27 +132,42 @@ handle_event(cast, {ping, Holder}, Data=#data{pool=Pool,
             ?LOG_INFO(#{at => ping,
                         reason => Reason},
                       #{report_cb => fun ?MODULE:report_cb/1}),
+
             close_and_reopen(Data)
     end;
+%% ignore `ping' for a different holder -- means it is an old message
+handle_event(cast, {ping, _}, _Data) ->
+    keep_state_and_data;
 handle_event(cast, {stop, Holder}, Data=#data{holder=Holder,
                                               conn=Conn}) ->
     pgo_handler:close(Conn),
     {stop, Data#data{conn=undefined,
                      holder=undefined}};
+%% ignore `stop' for a different holder -- means it is an old message
+handle_event(cast, {stop, _}, _Data) ->
+    keep_state_and_data;
 handle_event(cast, {disconnect, Holder}, Data=#data{holder=Holder}) ->
     close_and_reopen(Data);
-handle_event(cast, break, Data) ->
-    close_and_reopen(Data);
+%% ignore `disconnect' for a different holder -- means it is an old message
+handle_event(cast, {disconnect, _}, _Data) ->
+    keep_state_and_data;
 handle_event(cast, {break, Holder}, Data=#data{holder=Holder}) ->
+    close_and_reopen(Data);
+handle_event(cast, break, Data) ->
     close_and_reopen(Data);
 handle_event({call, From}, reload_types, #data{sup=Sup}) ->
     TypeServer = pgo_pool_sup:whereis_child(Sup, type_server),
     pgo_type_server:reload(TypeServer),
     {keep_state_and_data, [{reply, From, ok}]};
-handle_event(info, {'EXIT', Socket, _Reason}, Data=#data{conn=Socket}) ->
+handle_event(info, {'EXIT', Socket, _Reason}, Data=#data{conn=#conn{socket=Socket}}) ->
     %% socket died, go to disconnected state
-    {next_state, disconnected, Data#data{conn=undefined},
-     [{next_event, internal, connect}]}.
+    close_and_reopen(Data);
+%% ignore `EXIT' for a different Socket -- means it is an old message
+handle_event(info, {'EXIT', _, _Reason}, _Data) ->
+    keep_state_and_data;
+%% nothing to do for `ssl_closed' -- it should be handled by the `EXIT' handling
+handle_event(info, {ssl_closed, _}, _Data) ->
+    keep_state_and_data.
 
 %% @private
 terminate(_Reason, _, #data{conn=undefined}) ->

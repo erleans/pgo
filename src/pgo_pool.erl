@@ -124,11 +124,11 @@ handle_info({db_connection, From, {checkout, Now, MaybeQueue}}, Busy={busy, Queu
 handle_info(Checkout={db_connection, From, {checkout, _Now, _MaybeQueue}}, Ready) ->
     {ready, Queue, _Codel} = Ready,
     case ets:first(Queue) of
-      Key={_Time, Holder} ->
-        checkout_holder(Holder, From, Queue) andalso ets:delete(Queue, Key),
-        {noreply, Ready};
-      '$end_of_table' ->
-        handle_info(Checkout, erlang:setelement(1, Ready, busy))
+        Key={_Time, Holder} ->
+            checkout_holder(Holder, From, Queue) andalso ets:delete(Queue, Key),
+            {noreply, Ready};
+        '$end_of_table' ->
+            handle_info(Checkout, erlang:setelement(1, Ready, busy))
     end;
 handle_info({'ETS-TRANSFER', Holder, _Pid, Queue}, {_, Queue, _} = Data) ->
     disconnect_holder(Holder, {error, client_disconnected}),
@@ -183,7 +183,6 @@ handle_info({timeout, Idle, {Time, LastSent}}, {_, Queue, #{idle := Idle}} = Dat
             {noreply, {Status, Queue, start_idle(Time, Time, Codel)}}
     end.
 
-
 timeout(Delay, Time, Queue, Codel) ->
     case Codel of
         #{delay := MinDelay, next := Next, target := Target, interval := Interval}
@@ -209,6 +208,7 @@ drop_slow(Time, Timeout, Queue) ->
 ping(Holder, Queue, Codel) ->
     [{_, Conn, _, _, State}] = ets:lookup(Holder, ?HOLDER_KEY),
     pgo_connection:ping(Conn, Holder, State),
+    %% ping will create a new holder, so delete the old here
     ets:delete(Holder),
     {noreply, {ready, Queue, Codel}}.
 

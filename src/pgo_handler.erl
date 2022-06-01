@@ -10,7 +10,6 @@
          close/1]).
 
 -include("pgo_internal.hrl").
--include_lib("kernel/include/logger.hrl").
 
 -define(DEFAULT_HOST, "127.0.0.1").
 -define(DEFAULT_PORT, 5432).

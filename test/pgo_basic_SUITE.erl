@@ -19,7 +19,7 @@ all() ->
 
 groups() ->
     [{clear, [], cases()},
-     {ssl, [shuffle, parallel], cases()}].
+     {ssl, [], cases()}].
 
 cases() ->
     [exceptions, select, insert_update, text_types,
