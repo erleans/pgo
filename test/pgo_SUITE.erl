@@ -18,11 +18,9 @@ all() -> [checkout_checkin, checkout_break, recheckout, kill_socket, kill_pid,
           checkout_kill, checkout_disconnect, checkout_query_crash].
 
 init_per_suite(Config) ->
-    application:ensure_all_started(pgo),
     Config.
 
 end_per_suite(_Config) ->
-    application:stop(pgo),
     ok.
 
 init_per_testcase(T, Config) when T =:= checkout_break ;
@@ -30,6 +28,7 @@ init_per_testcase(T, Config) when T =:= checkout_break ;
                                   T =:= recheckout ;
                                   T =:= kill_socket ;
                                   T =:= kill_pid ->
+    application:ensure_all_started(pgo),
     pgo_sup:start_child(T, #{pool_size => 1,
                              database => ?DATABASE,
                              user => ?USER,
@@ -40,6 +39,7 @@ init_per_testcase(T, Config) when T =:= checkout_break ;
 
     [{pool_name, T} | Config];
 init_per_testcase(T, Config) ->
+    application:ensure_all_started(pgo),
     pgo_sup:start_child(T, #{pool_size => 10,
                              database => ?DATABASE,
                              user => ?USER,
@@ -50,6 +50,7 @@ init_per_testcase(T, Config) ->
     [{pool_name, T} | Config].
 
 end_per_testcase(_, _Config) ->
+    application:stop(pgo),
     ok.
 
 checkout_checkin(Config) ->
