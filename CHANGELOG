@@ -1,0 +1,10 @@
+# Changelog
+
+## [Unreleased]
+
+### Added
+- SCRAM support -- Thanks to https://github.com/epgsql/epgsql/
+
+### Changed
+
+### Removed

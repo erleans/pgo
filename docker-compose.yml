@@ -2,10 +2,12 @@ version: '3.7'
 
 services:
   postgres:
-    image: circleci/postgres:11.3-alpine-ram
+    image: cimg/postgres:14.2
     environment:
       - POSTGRES_USER=test
       - POSTGRES_DB=test
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_HOST_AUTH_METHOD=scram-sha-256
     ports:
       - 5432:5432
 
@@ -14,6 +16,7 @@ services:
     environment:
       - POSTGRES_USER=test
       - POSTGRES_DB=test
+      - POSTGRES_PASSWORD=password
       - PGDATA=/var/lib/postgresql/data/pgdata
     ports:
       - 5434:5432

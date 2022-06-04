@@ -19,7 +19,7 @@ all() ->
 
 groups() ->
     [{clear, [], cases()},
-     {ssl, [shuffle, parallel], cases()}].
+     {ssl, [], cases()}].
 
 cases() ->
     [exceptions, select, insert_update, text_types,
@@ -43,7 +43,8 @@ init_per_group(clear, Config) ->
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
                                              port => 5432,
                                              database => "test",
-                                             user => "test"}),
+                                             user => "test",
+                                             password => "password"}),
 
     Config;
 init_per_group(ssl, Config) ->
@@ -53,7 +54,8 @@ init_per_group(ssl, Config) ->
                                              port => 5434,
                                              ssl => true,
                                              database => "test",
-                                             user => "test"}),
+                                             user => "test",
+                                             password => "password"}),
 
     Config.
 
@@ -67,6 +69,9 @@ end_per_group(_, _Config) ->
     pgo:query("drop extension hstore"),
 
     application:stop(pgo),
+
+    pgo_test_utils:clear_types(default),
+
     ok.
 
 int4_range(_Config) ->

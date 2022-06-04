@@ -13,6 +13,7 @@ init_per_suite(Config) ->
 
     {ok, _} = pgo_sup:start_child(default, #{database => "test",
                                              user => "test",
+                                             password => "password",
                                              pool_size => 1,
                                              decode_opts => [return_rows_as_maps]}),
 
@@ -25,6 +26,9 @@ end_per_suite(_Config) ->
     pgo:query("drop table types"),
 
     application:stop(pgo),
+
+    pgo_test_utils:clear_types(default),
+
     ok.
 
 default_rows_as_maps(_Config) ->

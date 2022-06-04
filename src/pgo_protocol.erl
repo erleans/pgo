@@ -5,6 +5,7 @@
 
 -export([encode_startup_message/1,
          encode_ssl_request_message/0,
+         encode_scram_response_message/1,
          encode_password_message/1,
          encode_query_message/1,
          encode_parse_message/3,
@@ -19,6 +20,7 @@
          encode_copy_fail/1,
          decode_message/4,
          decode_row/4,
+         decode_strings/1,
          bind_requires_statement_description/1,
          format_error/1]).
 
@@ -41,6 +43,16 @@ encode_startup_message(Parameters) ->
 -spec encode_ssl_request_message() -> binary().
 encode_ssl_request_message() ->
     <<8:32/integer, 1234:16/integer, 5679:16/integer>>.
+
+-define(SASL_ANY_RESPONSE, $p).
+
+%%--------------------------------------------------------------------
+%% @doc Encode the scram start auth.
+%%
+-spec encode_scram_response_message(iolist()) -> iolist().
+encode_scram_response_message(SaslInitialResponse) ->
+    Size = iolist_size(SaslInitialResponse),
+    [<<(?SASL_ANY_RESPONSE):8, (Size + 4):32/integer>> | SaslInitialResponse].
 
 %%--------------------------------------------------------------------
 %% @doc Encode a password.
@@ -252,6 +264,12 @@ decode_authentication_message(<<9:32/integer>>) ->
     {ok, #authentication_sspi{}};
 decode_authentication_message(<<8:32/integer, Rest/binary>>) ->
     {ok, #authentication_gss_continue{data = Rest}};
+decode_authentication_message(<<10:32/integer, MethodsB/binary>>) ->
+    {ok, #authentication_sasl_password{methods = MethodsB}};
+decode_authentication_message(<<11:32/integer, ServerFirst/binary>>) ->
+    {ok, #authentication_server_first_message{first_msg = ServerFirst}};
+decode_authentication_message(<<12:32/integer, ServerFinalMsg/binary>>) ->
+    {ok, #authentication_server_final_message{final_msg = ServerFinalMsg}};
 decode_authentication_message(Payload) ->
     {error, {unknown_message, authentication, Payload}}.
 
@@ -545,6 +563,11 @@ decode_string(Binary) ->
             {String, <<0, Rest/binary>>} = split_binary(Binary, Position),
             {ok, String, Rest}
     end.
+
+decode_strings(Binary) ->
+    Size = byte_size(Binary) - 1,
+    <<Strings:Size/binary, 0>> = Binary,
+    binary:split(Strings, <<0>>, [global]).
 
 %%--------------------------------------------------------------------
 %% @doc Decode a row format.

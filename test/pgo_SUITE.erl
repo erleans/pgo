@@ -9,60 +9,50 @@
 
 -define(DATABASE, "test").
 -define(USER, "test").
+-define(PASSWORD, "password").
 
--define(UNTIL(X), (fun Until(I) when I =:= 10 -> erlang:error(fail);
+-define(UNTIL(X), (fun Until(I) when I =:= 20 -> erlang:error(fail);
                        Until(I) -> case X of true -> ok; false -> timer:sleep(10), Until(I+1) end end)(0)).
 
-all() -> [checkout_checkin, checkout_break, checkout_kill, checkout_disconnect, checkout_query_crash].
+all() -> [checkout_checkin, checkout_break, recheckout, kill_socket, kill_pid,
+          checkout_kill, checkout_disconnect, checkout_query_crash].
 
 init_per_suite(Config) ->
-    application:ensure_all_started(pgo),
     Config.
 
 end_per_suite(_Config) ->
-    application:stop(pgo),
     ok.
 
-init_per_testcase(T, Config) when T =:= checkout_break ->
-    Name = pool_break,
-    pgo_sup:start_child(Name, #{pool_size => 1,
+init_per_testcase(T, Config) when T =:= checkout_break ;
+                                  T =:= checkout_query_crash ;
+                                  T =:= recheckout ;
+                                  T =:= kill_socket ;
+                                  T =:= kill_pid ->
+    Pool = list_to_atom("pool_" ++ atom_to_list(T)),
+    application:ensure_all_started(pgo),
+    pgo_sup:start_child(Pool, #{pool_size => 1,
                                 database => ?DATABASE,
-                                user => ?USER}),
+                                user => ?USER,
+                                password => ?PASSWORD}),
 
-    Tid = pgo_pool:tid(Name),
+    Tid = pgo_pool:tid(Pool),
     ?UNTIL((catch ets:info(Tid, size)) =:= 1),
 
-    [{pool_name, Name} | Config];
-init_per_testcase(T, Config) when T =:= checkout_query_crash ->
-    Name = pool_query_crash,
-    pgo_sup:start_child(Name, #{pool_size => 1,
+    [{pool_name, Pool} | Config];
+init_per_testcase(T, Config) ->
+    Pool = list_to_atom("pool_" ++ atom_to_list(T)),
+    application:ensure_all_started(pgo),
+    pgo_sup:start_child(Pool, #{pool_size => 10,
                                 database => ?DATABASE,
-                                user => ?USER}),
-
-    Tid = pgo_pool:tid(Name),
-    ?UNTIL((catch ets:info(Tid, size)) =:= 1),
-
-    [{pool_name, Name} | Config];
-init_per_testcase(checkout_kill, Config) ->
-    Name = pool_kill,
-    pgo_sup:start_child(Name, #{pool_size => 10,
-                                database => ?DATABASE,
-                                user => ?USER}),
-    Tid = pgo_pool:tid(Name),
+                                user => ?USER,
+                                password => ?PASSWORD}),
+    Tid = pgo_pool:tid(Pool),
     ?UNTIL((catch ets:info(Tid, size)) =:= 10),
 
-    [{pool_name, Name} | Config];
-init_per_testcase(_, Config) ->
-    Name = pool_1,
-    pgo_sup:start_child(Name, #{pool_size => 10,
-                                database => ?DATABASE,
-                                user => ?USER}),
-    Tid = pgo_pool:tid(Name),
-    ?UNTIL((catch ets:info(Tid, size)) =:= 10),
-
-    [{pool_name, Name} | Config].
+    [{pool_name, Pool} | Config].
 
 end_per_testcase(_, _Config) ->
+    application:stop(pgo),
     ok.
 
 checkout_checkin(Config) ->
@@ -98,17 +88,122 @@ checkout_break(Config) ->
 
     ok.
 
+recheckout(Config) ->
+    Name = ?config(pool_name, Config),
+    Tid = pgo_pool:tid(Name),
+
+    {ok, _, Conn=#conn{socket=Socket}} = pgo:checkout(Name),
+
+    ?UNTIL((catch ets:info(Tid, size)) =:= 0),
+
+    pgo:with_conn(Conn, fun() ->
+                                ?assertMatch(#{rows := [{1}]}, pgo:query("select 1", []))
+                        end),
+
+    erlang:exit(Socket, kill),
+    pgo:with_conn(Conn, fun() ->
+                                ?assertEqual({error, closed}, pgo:query("select 1", []))
+                        end),
+
+    %% wait for a new connection to be back in the pool
+    ?UNTIL((catch ets:info(Tid, size)) =:= 1),
+    ?assertMatch(#{rows := [{1}]}, pgo:query("select 1", [], #{pool => Name})),
+    {ok, _Ref1={_, _, _, _Holder1}, Conn1} = pgo:checkout(Name),
+    pgo:with_conn(Conn1, fun() ->
+                                ?assertMatch(#{rows := [{1}]}, pgo:query("select 1", []))
+                        end),
+
+    ok.
+
+kill_socket(Config) ->
+    Name = ?config(pool_name, Config),
+    Tid = pgo_pool:tid(Name),
+
+    {ok, Ref, Conn=#conn{socket=Socket}} = pgo:checkout(Name),
+
+    ?UNTIL((catch ets:info(Tid, size)) =:= 0),
+
+    pgo:with_conn(Conn, fun() ->
+                                ?assertMatch(#{rows := [{1}]}, pgo:query("select 1", []))
+                        end),
+
+    %% check the conn back in before killing to test what happens if not checked out
+    pgo:checkin(Ref, Conn),
+
+    %% socket is killed, a new socket is created and checked in to the pool
+    erlang:exit(Socket, kill),
+
+    %% pool should go up to 2 until the next ping that catches the socket is dead
+    ?UNTIL((catch ets:info(Tid, size)) =:= 2),
+
+    ok.
+
+kill_pid(Config) ->
+    Name = ?config(pool_name, Config),
+    Tid = pgo_pool:tid(Name),
+
+    {ok, Ref, Conn=#conn{owner=Pid}} = pgo:checkout(Name),
+
+    ?UNTIL((catch ets:info(Tid, size)) =:= 0),
+
+    pgo:with_conn(Conn, fun() ->
+                                ?assertMatch(#{rows := [{1}]}, pgo:query("select 1", []))
+                        end),
+
+    %% check the conn back in before killing to test what happens if not checked out
+    pgo:checkin(Ref, Conn),
+
+    %% socket is killed, a new socket is created and checked in to the pool
+    erlang:exit(Pid, kill),
+
+    %% pool should go up to 2 until the old holder is removed
+    ?UNTIL((catch ets:info(Tid, size)) =:= 2),
+
+    ok.
+
 checkout_kill(Config) ->
     Name = ?config(pool_name, Config),
     Tid = pgo_pool:tid(Name),
 
-    {ok, _Ref, #conn{socket=Socket}} = pgo:checkout(Name),
-    {ok, _Ref1, #conn{owner=Pid1}} = pgo:checkout(Name),
+    {ok, _Ref={_, _, _, Holder}, Conn=#conn{socket=Socket}} = pgo:checkout(Name),
+    {ok, {_, _, _, _}, Conn1=#conn{owner=Pid1}} = pgo:checkout(Name),
 
+    ?UNTIL((catch ets:info(Tid, size)) =:= 8),
+
+    pgo:with_conn(Conn, fun() ->
+                                ?assertMatch(#{rows := [{1}]}, pgo:query("select 1", []))
+                        end),
+
+    ?assertMatch([_], ets:tab2list(Holder)),
+
+    %% socket is killed, a new socket is created and checked in to the pool
     erlang:exit(Socket, kill),
+    pgo:with_conn(Conn, fun() ->
+                                ?assertEqual({error, closed}, pgo:query("select 1", []))
+                        end),
+    ?assertMatch([_], ets:tab2list(Holder)),
+
+    %% pool goes back to 9
     ?UNTIL((catch ets:info(Tid, size)) =:= 9),
 
+    %% old conn is still closed
+    pgo:with_conn(Conn, fun() ->
+                                ?assertEqual({error, closed}, pgo:query("select 1", []))
+                        end),
+
+    %% second checked out conn works
+    pgo:with_conn(Conn1, fun() ->
+                                 ?assertMatch(#{rows := [{1}]}, pgo:query("select 1", []))
+                         end),
+
+    %% process owning the socket is killed and pool size will then go to 10
     erlang:exit(Pid1, kill),
+
+    %% process was killed, connection now fails
+    pgo:with_conn(Conn1, fun() ->
+                                 ?assertMatch({error, _}, pgo:query("select 1", []))
+                         end),
+
     ?UNTIL((catch ets:info(Tid, size)) =:= 10),
 
     ok.

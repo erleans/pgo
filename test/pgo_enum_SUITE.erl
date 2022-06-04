@@ -12,7 +12,8 @@ init_per_suite(Config) ->
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
                                              database => "test",
-                                             user => "test"}),
+                                             user => "test",
+                                             password => "password"}),
 
     ?assertMatch(#{command := create},
                  pgo:query("CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')")),
@@ -23,6 +24,9 @@ end_per_suite(_Config) ->
     #{command := drop} = pgo:query("DROP TYPE mood CASCADE;"),
 
     application:stop(pgo),
+
+    pgo_test_utils:clear_types(default),
+
     ok.
 
 select(_Config) ->

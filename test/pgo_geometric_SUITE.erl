@@ -12,12 +12,14 @@ init_per_suite(Config) ->
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
                                              database => "test",
-                                             user => "test"}),
+                                             user => "test",
+                                             password => "password"}),
 
     Config.
 
 end_per_suite(_Config) ->
     application:stop(pgo),
+    pgo_test_utils:clear_types(default),
     ok.
 
 select(_Config) ->

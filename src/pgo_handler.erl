@@ -10,7 +10,6 @@
          close/1]).
 
 -include("pgo_internal.hrl").
--include_lib("kernel/include/logger.hrl").
 
 -define(DEFAULT_HOST, "127.0.0.1").
 -define(DEFAULT_PORT, 5432).
@@ -183,6 +182,8 @@ setup_startup(Conn=#conn{socket_module=SocketModule,
                     setup_authenticate_cleartext_password(Conn, Options);
                 {ok, #authentication_md5_password{salt = Salt}} ->
                     setup_authenticate_md5_password(Conn, Salt, Options);
+                {ok, #authentication_sasl_password{methods=MethodsBinary}} ->
+                    setup_authenticate_sasl_password(Conn, MethodsBinary, Options);
                 {ok, #authentication_scm_credential{}} ->
                     {error, {unimplemented, authentication_scm}};
                 {ok, #authentication_gss{}} ->
@@ -201,6 +202,74 @@ setup_startup(Conn=#conn{socket_module=SocketModule,
 setup_authenticate_cleartext_password(Conn, Options) ->
     Password = maps:get(password, Options, ?DEFAULT_PASSWORD),
     setup_authenticate_password(Conn, Password).
+
+setup_authenticate_sasl_password(Conn, MethodsBinary, Options) ->
+    Methods = pgo_protocol:decode_strings(MethodsBinary),
+    case lists:member(<<"SCRAM-SHA-256">>, Methods) of
+        true ->
+            auth_scram(Conn, Options);
+        false ->
+            {error, {unimplemented, authentication}}
+    end.
+
+auth_scram(Conn, Options) ->
+    Nonce = pgo_scram:get_nonce(16),
+    case scram_client_first(Nonce, Conn, Options) of
+        {ok, #authentication_server_first_message{first_msg=ServerFirst}} ->
+            case scram_client_final(Nonce, ServerFirst, Conn, Options) of
+                {{ok, #authentication_server_final_message{final_msg=ServerFinal}}, ServerProof} ->
+                    case pgo_scram:parse_server_final(ServerFinal) of
+                        {ok, ServerProof} ->
+                            setup_finish(Conn);
+                        Other ->
+                            {error, {sasl_server_final, Other}}
+                    end;
+                {{ok, #error_response{fields = Fields}}, _} ->
+                    {error, {pgo_error, Fields}};
+                {{ok, UnexpectedMessage}, _} ->
+                    {error, {unexpected_message, UnexpectedMessage}};
+                {{error, _} = Error, _} ->
+                    Error;
+                {error, _} = Error ->
+                    Error
+            end;
+        {ok, #error_response{fields = Fields}} ->
+            {error, {pgo_error, Fields}};
+        {ok, UnexpectedMessage} ->
+            {error, {unexpected_message, UnexpectedMessage}};
+        {error, _} = Error ->
+            Error
+    end.
+
+-spec scram_client_first(pgo_scram:nonce(), #conn{}, maps:map()) -> {ok, term()} | {error, #error_response{}} | {error, term()}.
+scram_client_first(Nonce, #conn{socket_module=SocketModule,
+                                socket=Socket,
+                                pool=Pool}, Options) ->
+    User = maps:get(user, Options, ?DEFAULT_USER),
+    ClientFirst = pgo_scram:get_client_first(User, Nonce),
+    ClientFirstSize = iolist_size(ClientFirst),
+    SaslInitialResponse = [<<"SCRAM-SHA-256">>, 0, <<ClientFirstSize:32/integer>>, ClientFirst],
+    case SocketModule:send(Socket, pgo_protocol:encode_scram_response_message(SaslInitialResponse)) of
+        ok ->
+            receive_message(SocketModule, Socket, Pool, []);
+        {error, _} = SendError ->
+            SendError
+    end.
+
+-spec scram_client_final(pgo_scram:nonce(), binary(), #conn{}, maps:map()) -> {{ok, term()}, binary()} | {{error, term()}, binary()} | {error, term()}.
+scram_client_final(Nonce, ServerFirst, #conn{socket_module=SocketModule,
+                                             socket=Socket,
+                                             pool=Pool}, Options) ->
+    User = maps:get(user, Options, ?DEFAULT_USER),
+    ServerFirstParts = pgo_scram:parse_server_first(ServerFirst, Nonce),
+    Password = maps:get(password, Options, ?DEFAULT_PASSWORD),
+    {ClientFinalMessage, ServerProof} = pgo_scram:get_client_final(ServerFirstParts, Nonce, User, Password),
+    case SocketModule:send(Socket, pgo_protocol:encode_scram_response_message(ClientFinalMessage)) of
+        ok ->
+            {receive_message(SocketModule, Socket, Pool, []), ServerProof};
+        {error, _} = SendError ->
+            SendError
+    end.
 
 setup_authenticate_md5_password(Conn, Salt, Options) ->
     User = maps:get(user, Options, ?DEFAULT_USER),
@@ -242,6 +311,8 @@ setup_finish(Conn=#conn{socket_module=SocketModule,
             setup_finish(Conn);
         {ok, #ready_for_query{}} ->
             {ok, Conn};
+        {ok, #authentication_ok{}} ->
+            setup_finish(Conn);
         {ok, #error_response{fields = Fields}} ->
             {error, {pgo_error, Fields}};
         {ok, Message} ->
