@@ -19,6 +19,7 @@ init_per_suite(Config) ->
 
 end_per_suite(_Config) ->
     application:stop(pgo),
+    pgo_test_utils:clear_types(default),
     ok.
 
 select(_Config) ->

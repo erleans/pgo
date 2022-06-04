@@ -24,16 +24,17 @@ init_per_group(erl_datetime, Config) ->
     application:load(pg_types),
     application:set_env(pg_types, timestamp_config, []),
 
-    application:ensure_all_started(pgo),
+    {ok, _} = application:ensure_all_started(pgo),
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
-                                             database => "test",
-                                             user => "test",
-                                             password => "password"}),
+                                                   database => "test",
+                                                   user => "test",
+                                                   password => "password"}),
     Config;
 init_per_group(as_micro, Config) ->
     application:load(pg_types),
     application:set_env(pg_types, timestamp_config, integer_system_time_microseconds),
+
     application:ensure_all_started(pgo),
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
@@ -44,6 +45,7 @@ init_per_group(as_micro, Config) ->
 init_per_group(as_integer, Config) ->
     application:load(pg_types),
     application:set_env(pg_types, timestamp_config, integer_system_time_seconds),
+
     application:ensure_all_started(pgo),
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
@@ -54,6 +56,7 @@ init_per_group(as_integer, Config) ->
 init_per_group(as_float, Config) ->
     application:load(pg_types),
     application:set_env(pg_types, timestamp_config, float_system_time_seconds),
+
     application:ensure_all_started(pgo),
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
@@ -66,15 +69,18 @@ end_per_group(_, _Config) ->
     application:unset_env(pg_types, timestamp_config),
     application:stop(pgo),
     application:unload(pg_types),
+
+    pgo_test_utils:clear_types(default),
+
     ok.
 
 select(_Config) ->
     ?assertMatch(#{command := select,
-                  rows := [{{2012,1,17}}]},
+                   rows := [{{2012,1,17}}]},
                  pgo:query("select '2012-01-17 10:54:03.45'::date")),
 
     ?assertMatch(#{command := select,
-                  rows := [{{{2012,1,17},{10,54,3.45}}}]},
+                   rows := [{{{2012,1,17},{10,54,3.45}}}]},
                  pgo:query("select '2012-01-17 10:54:03.45'::timestamp")),
 
     ?assertMatch(#{command := select,
@@ -90,7 +96,7 @@ insert(_Config) ->
                            [{{2012,1,17},{10,54,3.45}}, {10,54,3.45}])),
 
     ?assertMatch(#{command := select,
-                  rows := [{{{2012,1,17},{10,54,3.45}}, {10,54,3.45}}]},
+                   rows := [{{{2012,1,17},{10,54,3.45}}, {10,54,3.45}}]},
                  pgo:query("select a_timestamp, a_time from times")).
 
 interval(_Config) ->
@@ -106,7 +112,7 @@ interval(_Config) ->
                            [{{2013,1,17},{10,54,3.45}}, {{2013,1,28},{10,54,3.45}}])),
 
     ?assertMatch(#{command := select,
-                  rows := [{{{2012,1,17},{10,54,3.45}}, {{2012,1,20},{10,54,3.45}}}]},
+                   rows := [{{{2012,1,17},{10,54,3.45}}, {{2012,1,20},{10,54,3.45}}}]},
                  pgo:query("select a_timestamp, b_timestamp from interval_times where b_timestamp - a_timestamp < $1", [{interval, {0, 5, 0}}])),
 
     ?assertMatch(#{command := select,
@@ -132,7 +138,7 @@ as_integer(_Config) ->
                            [{{2012,1,17},{10,54,3.45}}, 1326797643 * 1000000])),
 
     ?assertMatch(#{command := select,
-                  rows := [{1326797643, 1326797643}]},
+                   rows := [{1326797643, 1326797643}]},
                  pgo:query("select a_timestamp, b_timestamp from times")).
 
 as_float(_Config) ->
@@ -156,5 +162,5 @@ as_micro(_Config) ->
                            [{{2012,1,17},{10,54,3.45}}, 1326797643450000])),
 
     ?assertMatch(#{command := select,
-                  rows := [{1326797643450000, 1326797643450000}]},
+                   rows := [{1326797643450000, 1326797643450000}]},
                  pgo:query("select a_timestamp, b_timestamp from times")).

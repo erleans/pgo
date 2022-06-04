@@ -11,7 +11,7 @@
 -define(USER, "test").
 -define(PASSWORD, "password").
 
--define(UNTIL(X), (fun Until(I) when I =:= 10 -> erlang:error(fail);
+-define(UNTIL(X), (fun Until(I) when I =:= 20 -> erlang:error(fail);
                        Until(I) -> case X of true -> ok; false -> timer:sleep(10), Until(I+1) end end)(0)).
 
 all() -> [checkout_checkin, checkout_break, recheckout, kill_socket, kill_pid,
@@ -28,26 +28,28 @@ init_per_testcase(T, Config) when T =:= checkout_break ;
                                   T =:= recheckout ;
                                   T =:= kill_socket ;
                                   T =:= kill_pid ->
+    Pool = list_to_atom("pool_" ++ atom_to_list(T)),
     application:ensure_all_started(pgo),
-    pgo_sup:start_child(T, #{pool_size => 1,
-                             database => ?DATABASE,
-                             user => ?USER,
-                             password => ?PASSWORD}),
+    pgo_sup:start_child(Pool, #{pool_size => 1,
+                                database => ?DATABASE,
+                                user => ?USER,
+                                password => ?PASSWORD}),
 
-    Tid = pgo_pool:tid(T),
+    Tid = pgo_pool:tid(Pool),
     ?UNTIL((catch ets:info(Tid, size)) =:= 1),
 
-    [{pool_name, T} | Config];
+    [{pool_name, Pool} | Config];
 init_per_testcase(T, Config) ->
+    Pool = list_to_atom("pool_" ++ atom_to_list(T)),
     application:ensure_all_started(pgo),
-    pgo_sup:start_child(T, #{pool_size => 10,
-                             database => ?DATABASE,
-                             user => ?USER,
-                             password => ?PASSWORD}),
-    Tid = pgo_pool:tid(T),
+    pgo_sup:start_child(Pool, #{pool_size => 10,
+                                database => ?DATABASE,
+                                user => ?USER,
+                                password => ?PASSWORD}),
+    Tid = pgo_pool:tid(Pool),
     ?UNTIL((catch ets:info(Tid, size)) =:= 10),
 
-    [{pool_name, T} | Config].
+    [{pool_name, Pool} | Config].
 
 end_per_testcase(_, _Config) ->
     application:stop(pgo),

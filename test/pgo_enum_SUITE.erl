@@ -24,6 +24,9 @@ end_per_suite(_Config) ->
     #{command := drop} = pgo:query("DROP TYPE mood CASCADE;"),
 
     application:stop(pgo),
+
+    pgo_test_utils:clear_types(default),
+
     ok.
 
 select(_Config) ->

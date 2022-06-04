@@ -69,6 +69,9 @@ end_per_group(_, _Config) ->
     pgo:query("drop extension hstore"),
 
     application:stop(pgo),
+
+    pgo_test_utils:clear_types(default),
+
     ok.
 
 int4_range(_Config) ->

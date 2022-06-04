@@ -26,6 +26,9 @@ end_per_suite(_Config) ->
     pgo:query("drop table types"),
 
     application:stop(pgo),
+
+    pgo_test_utils:clear_types(default),
+
     ok.
 
 default_rows_as_maps(_Config) ->
