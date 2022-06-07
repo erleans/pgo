@@ -7,7 +7,7 @@
    [kernel,
     stdlib,
     backoff,
-    telemetry,
+    opentelemetry_api,
     pg_types
    ]},
   {env,[]},
