@@ -94,14 +94,21 @@ disconnected(EventType, _, Data=#data{broker=Broker,
             {next_state, enqueued, Data#data{conn=Conn,
                                              holder=Holder,
                                              backoff=B1}};
-        _Error ->
+        {error, Error} ->
+            ?LOG_DEBUG("full error connecting to database: ~p", [Error]),
+            ?LOG_INFO(#{at => connecting,
+                        reason => Error},
+                      #{report_cb => fun ?MODULE:report_cb/1}),
             {Backoff, B1} = backoff:fail(B),
             {next_state, disconnected, Data#data{broker=Broker,
                                                  holder=undefined,
                                                  backoff=B1},
              [{state_timeout, Backoff, connect}]}
     catch
-        throw:_Reason ->
+        throw:Reason ->
+            ?LOG_INFO(#{at => connecting,
+                        reason => Reason},
+                      #{report_cb => fun ?MODULE:report_cb/1}),
             {Backoff, B1} = backoff:fail(B),
             {next_state, disconnected, Data#data{broker=Broker,
                                                  holder=undefined,
@@ -186,4 +193,10 @@ close_and_reopen(Data=#data{conn=Conn}) ->
 
 report_cb(#{at := ping,
             reason := Reason}) ->
-    {"disconnecting after database failed ping with reason ~p", [Reason]}.
+    {"disconnecting after database failed ping with reason ~p", [Reason]};
+report_cb(#{at := connecting,
+            reason := {pgo_error, #{message := Message}}}) ->
+    {"error connecting to database: ~s", [Message]};
+report_cb(#{at := connecting,
+            reason := Reason}) ->
+    {"unknown error when connecting to database: ~p", [Reason]}.
