@@ -23,7 +23,7 @@ groups() ->
 
 cases() ->
     [exceptions, select, insert_update, text_types,
-     rows_as_maps, json_jsonb, types, validate_telemetry,
+     rows_as_maps, json_jsonb, types,
      int4_range, ts_range, tstz_range, numerics,
      hstore, records, circle, path, polygon, line,
      line_segment, tid, bit_string, arrays, tsvector].
@@ -155,23 +155,6 @@ tstz_range(_Config) ->
                  pgo:query(<<"SELECT tstzrange($1, $2, '[)');">>, ['-infinity', {{2020,1,1},{0,0,0}}])),
 
     ok.
-
-validate_telemetry(_Config) ->
-    Self = self(),
-    telemetry:attach(<<"send-query-time">>, [pgo, query],
-                     fun(Event, Latency, Metadata, _) -> Self ! {Event, Latency, Metadata} end, []),
-
-    ?assertMatch(#{rows := [{null}]}, pgo:query("select null")),
-
-    receive
-        {[pgo, query], #{latency := Latency}, #{query_time := QueryTime,
-                                                pool := default}} ->
-            ?assertEqual(Latency, QueryTime),
-            telemetry:detach(<<"send-query-time">>)
-    after
-        500 ->
-            ct:fail(timeout)
-    end.
 
 exceptions(_Config) ->
     {error, Reason} = pgo:query("select $1::interval", [none]),

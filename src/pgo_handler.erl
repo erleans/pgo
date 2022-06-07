@@ -66,16 +66,9 @@ extended_query(Socket, Query, Parameters, Timings) when is_map(Timings) ->
     extended_query(Socket, Query, Parameters, [], Timings).
 
 -spec extended_query(#conn{}, iodata(), list(), pgo:decode_opts(), map()) -> pgo:result().
-extended_query(Socket=#conn{pool=Pool}, Query, Parameters, DecodeOptions, Timings) ->
-    Start = erlang:monotonic_time(),
+extended_query(Socket, Query, Parameters, DecodeOptions, _Timings) ->
     DecodeFun = proplists:get_value(decode_fun, DecodeOptions, undefined),
-    Result = extended_query(Socket, Query, Parameters, DecodeOptions, DecodeFun, []),
-    Latency = erlang:monotonic_time() - Start,
-    telemetry:execute([pgo, query], #{latency => Latency}, Timings#{pool => Pool,
-                                                                    query => Query,
-                                                                    query_time => Latency,
-                                                                    result => Result}),
-    Result.
+    extended_query(Socket, Query, Parameters, DecodeOptions, DecodeFun, []).
 
 -spec ping(#conn{}) -> ok | {error, term()}.
 ping(Conn=#conn{socket=Socket,
@@ -100,7 +93,8 @@ open(Pool, PoolConfig) ->
     Host = maps:get(host, PoolConfig, ?DEFAULT_HOST),
     Port = maps:get(port, PoolConfig, ?DEFAULT_PORT),
     SockOpts = maps:get(socket_options, PoolConfig, []),
-    TraceDefault = maps:get(trace, PoolConfig, false),
+    TraceDefault = maps:get(trace, PoolConfig, true),
+    IncludeStatementDefault = maps:get(include_statement_span_attribute, PoolConfig, true),
     QueueDefault = maps:get(queue, PoolConfig, true),
     DefaultDecodeOpts = maps:get(decode_opts, PoolConfig, []),
     case gen_tcp:connect(Host, Port, SockOpts ++ [binary, {packet, raw}, {active, false}]) of
@@ -110,6 +104,14 @@ open(Pool, PoolConfig) ->
                          socket=Socket,
                          parameters=#{},
                          trace=TraceDefault,
+                         trace_attributes=[{<<"db.system">>, <<"postgresql">>},
+                                           {<<"db.name">>, iolist_to_binary(maps:get(database, PoolConfig))},
+                                           %% {<<"db.connection_string">>, <<"">>},
+                                           {<<"db.user">>, iolist_to_binary(maps:get(user, PoolConfig, ?DEFAULT_USER))},
+                                           {<<"net.peer.name">>, iolist_to_binary(Host)},
+                                           {<<"net.peer.port">>, Port},
+                                           {<<"net.peer.transport">>, <<"IP.TCP">>}],
+                         include_statement_span_attribute=IncludeStatementDefault,
                          queue=QueueDefault,
                          socket_module=case maps:get(ssl, PoolConfig, undefined) of
                                            true -> ssl;
