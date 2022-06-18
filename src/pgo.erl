@@ -24,6 +24,7 @@
          format_error/1]).
 
 -include("pgo_internal.hrl").
+-include_lib("opentelemetry_api/include/otel_tracer.hrl").
 
 -export_type([result/0,
               error/0,
@@ -49,6 +50,7 @@
 -type pool_option() :: queue | {queue, boolean()}.
 -type options() :: #{pool => atom(),
                      trace => boolean(),
+                     include_statement_span_attribute => boolean(),
                      queue => boolean(),
                      decode_opts => [decode_option()]}.
 
@@ -91,41 +93,50 @@ query(Query, Params) ->
 %% @doc Executes an extended query either on a Pool or a provided connection.
 -spec query(iodata(), list(), options()) -> result().
 query(Query, Params, Options) ->
-    DecodeOptions = maps:get(decode_opts, Options, []),
     case get(pgo_transaction_connection) of
         undefined ->
             Pool = maps:get(pool, Options, default),
             PoolOptions = maps:get(pool_options, Options, []),
             case checkout(Pool, PoolOptions) of
-                {ok, Ref, Conn=#conn{trace=TraceDefault,
-                                     decode_opts=DefaultDecodeOpts}} ->
-                    DoTrace = maps:get(trace, Options, TraceDefault),
-                    {SpanCtx, ParentCtx} = maybe_start_span(DoTrace,
-                                                            <<"pgo:query/3">>,
-                                                            #{attributes => #{<<"query">> => Query}}),
+                {ok, Ref, Conn} ->
                     try
-                        pgo_handler:extended_query(Conn, Query, Params,
-                                                   DecodeOptions ++ DefaultDecodeOpts,
-                                                   #{queue_time => undefined})
+                        query(Query, Params, Options, Conn)
                     after
-                        maybe_finish_span(DoTrace, SpanCtx, ParentCtx),
                         checkin(Ref, Conn)
                     end;
                 {error, _}=E ->
                     E
             end;
-        Conn=#conn{pool=Pool,
-                   decode_opts=DefaultDecodeOpts} ->
+        Conn=#conn{pool=Pool} ->
             %% verify we aren't trying to run a query against another pool from a transaction
             case maps:get(pool, Options, Pool) of
                 P when P =:= Pool ->
-                    pgo_handler:extended_query(Conn, Query, Params,
-                                               DecodeOptions ++ DefaultDecodeOpts,
-                                               #{queue_time => undefined});
+                    query(Query, Params, Options, Conn);
                 P ->
                     error({in_other_pool_transaction, P})
             end
     end.
+
+query(Query, Params, Options, Conn=#conn{trace=TraceDefault,
+                                         trace_attributes=TraceAttributes,
+                                         include_statement_span_attribute=IncludeStatementDefault,
+                                         decode_opts=DefaultDecodeOpts}) ->
+    DecodeOptions = maps:get(decode_opts, Options, []),
+    DoTrace = maps:get(trace, Options, TraceDefault),
+    IncludeStatement = maps:get(include_statement_span_attribute,
+                                Options,
+                                IncludeStatementDefault),
+
+    %% if the SDK (`opentelemetry' application) isn't running then `with_span` is a no-op.
+    %% if the SDK is running then `is_recording' is used so the user can disable the span individually.
+    ?with_span(<<"pgo:query/3">>, #{is_recording => if DoTrace -> true; true -> false end,
+                                    attributes => [{<<"db.statement">>, iolist_to_binary(Query)}
+                                                   || IncludeStatement] ++ TraceAttributes},
+               fun(_) ->
+                       pgo_handler:extended_query(Conn, Query, Params,
+                                                  DecodeOptions ++ DefaultDecodeOpts,
+                                                  #{queue_time => undefined})
+               end).
 
 %% @equiv transaction(default, Fun, [])
 -spec transaction(fun(() -> any())) -> any() | {error, any()}.
@@ -142,54 +153,44 @@ transaction(Fun, Options) when is_function(Fun) ->
 transaction(Pool, Fun, Options) ->
     case get(pgo_transaction_connection) of
         undefined ->
-            PoolOptions = maps:get(pool_options, Options, []),
-            case checkout(Pool, PoolOptions) of
-                {ok, Ref, Conn=#conn{trace=TraceDefault}} ->
-                    DoTrace = maps:get(trace, Options, TraceDefault),
-                    {SpanCtx, ParentCtx} = maybe_start_span(DoTrace,
-                                                            <<"pgo:transaction/2">>,
-                                                            #{}),
-                    try
-                        #{command := 'begin'} = pgo_handler:extended_query(Conn, "BEGIN", [],
-                                                                           #{queue_time => undefined}),
-                        put(pgo_transaction_connection, Conn),
-                        Result = Fun(),
-                        case pgo_handler:extended_query(Conn, "COMMIT", [],
-                                                        #{queue_time => undefined}) of
-                            #{command := commit} -> Result;
-                            #{command := rollback} -> Result
-                        end
-                    catch
-                        ?WITH_STACKTRACE(T, R, S)
-                        pgo_handler:extended_query(Conn, "ROLLBACK", [], #{queue_time => undefined}),
-                        erlang:raise(T, R, S)
-                    after
-                        maybe_finish_span(DoTrace, SpanCtx, ParentCtx),
-                        checkin(Ref, Conn),
-                        erase(pgo_transaction_connection)
-                    end;
-                {error, _}=E ->
-                    E
-            end;
+            new_transaction(Pool, Fun, Options);
         _Conn ->
             %% already in a transaction
             Fun()
     end.
 
-
-maybe_start_span(false, _, _) ->
-    {undefined, undefined};
-maybe_start_span(true, Name, Attributes) ->
-    CurrentSpanCtx = ocp:current_span_ctx(),
-    NewSpanCtx = oc_trace:start_span(Name, ocp:current_span_ctx(), Attributes),
-    ocp:with_span_ctx(NewSpanCtx),
-    {NewSpanCtx, CurrentSpanCtx}.
-
-maybe_finish_span(false, _, _) ->
-    undefined;
-maybe_finish_span(true, SpanCtx, ParentCtx) ->
-    oc_trace:finish_span(SpanCtx),
-    ocp:with_span_ctx(ParentCtx).
+new_transaction(Pool, Fun, Options) ->
+    PoolOptions = maps:get(pool_options, Options, []),
+    case checkout(Pool, PoolOptions) of
+        {ok, Ref, Conn=#conn{trace=TraceDefault,
+                             trace_attributes=TraceAttributes}} ->
+            DoTrace = maps:get(trace, Options, TraceDefault),
+            ?with_span(<<"pgo:transaction/2">>,
+                       #{is_recording => if DoTrace -> true; true -> false end,
+                         attributes => TraceAttributes},
+                       fun(_) ->
+                               try
+                                   #{command := 'begin'} = pgo_handler:extended_query(Conn, "BEGIN", [],
+                                                                                      #{queue_time => undefined}),
+                                   put(pgo_transaction_connection, Conn),
+                                   Result = Fun(),
+                                   case pgo_handler:extended_query(Conn, "COMMIT", [],
+                                                                   #{queue_time => undefined}) of
+                                       #{command := commit} -> Result;
+                                       #{command := rollback} -> Result
+                                   end
+                               catch
+                                   Type:Reason:Stacktrace ->
+                                       pgo_handler:extended_query(Conn, "ROLLBACK", [], #{queue_time => undefined}),
+                                       erlang:raise(Type, Reason, Stacktrace)
+                               after
+                                   checkin(Ref, Conn),
+                                   erase(pgo_transaction_connection)
+                               end
+                       end);
+        {error, _}=E ->
+            E
+    end.
 
 with_conn(Conn, Fun) ->
     case get(pgo_transaction_connection) of

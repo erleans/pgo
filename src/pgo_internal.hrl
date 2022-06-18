@@ -1,9 +1,3 @@
--ifdef('OTP_RELEASE').
--define(WITH_STACKTRACE(T, R, S), T:R:S ->).
--else.
--define(WITH_STACKTRACE(T, R, S), T:R -> S = erlang:get_stacktrace(),).
--endif.
-
 -record(conn, {owner :: pid(),
                socket :: gen_tcp:socket() | ssl:sslsocket(),
                socket_module :: ssl | gen_tcp,
@@ -11,6 +5,8 @@
                parameters :: map(),
                queue :: boolean(),
                trace :: boolean(),
+               trace_attributes :: [{unicode:unicode_binary(), unicode:unicode_binary() | integer()}],
+               include_statement_span_attribute :: boolean(),
                decode_opts :: []}).
 
 % Backend messages
