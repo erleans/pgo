@@ -146,7 +146,8 @@ transaction(Fun) ->
 %% @equiv transaction(default, Fun, Options)
 -spec transaction(fun(() -> any()), options()) -> any() | {error, any()}.
 transaction(Fun, Options) when is_function(Fun) ->
-    transaction(Fun, Options).
+    Pool = maps:get(pool, Options, default),
+    transaction(Pool, Fun, Options).
 
 %% @doc Runs a function, passing it a connection, in a SQL transaction.
 -spec transaction(pool(), fun(() -> any()), options()) -> any() | {error, any()}.
