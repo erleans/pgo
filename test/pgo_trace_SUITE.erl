@@ -93,7 +93,7 @@ trace_with_parent_query(_Config) ->
 trace_transaction(_Config) ->
     pgo:transaction(fun() ->
                             ?assertMatch(#{rows := [_]}, pgo:query("select '[1,2)'::int4range"))
-                    end),
+                    end, #{}),
 
     receive
         {span, #span{name = <<"pgo:transaction/2">>,
