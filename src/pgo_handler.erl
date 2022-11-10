@@ -578,7 +578,8 @@ decode_tag(Tag) ->
             VerbDecoded = decode_verb(Verb),
             ObjectL = decode_object(Object),
             list_to_tuple([VerbDecoded | ObjectL]);
-        [Verb] -> decode_verb(Verb)
+        [Verb] ->
+            {decode_verb(Verb), nil}
     end.
 
 decode_verb(Verb) ->
