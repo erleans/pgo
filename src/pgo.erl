@@ -47,12 +47,14 @@
                          column_name_as_atom | {column_name_as_atom, boolean()} |
                          {decode_fun, decode_fun()}.
 
--type pool_option() :: queue | {queue, boolean()}.
+-type pool_option() :: queue | {queue, boolean()} |
+                       {timeout, timeout()} | {deadline, integer()}.
 -type options() :: #{pool => atom(),
                      trace => boolean(),
                      include_statement_span_attribute => boolean(),
                      queue => boolean(),
-                     decode_opts => [decode_option()]}.
+                     decode_opts => [decode_option()],
+                     pool_options => [pool_option()]}.
 
 -type pool_config() :: #{host => string(),
                          port => integer(),
@@ -67,7 +69,7 @@
                          idle_interval => integer(),
 
                          %% gen_tcp socket options
-                         socket_options => [gen_tcp:socket_option()],
+                         socket_options => [gen_tcp:connect_option()],
 
                          %% defaults for options used at query time
                          queue => boolean(),
