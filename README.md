@@ -36,6 +36,8 @@ To try `pgo` simply modify `config/example.config` by replacing the `host`, `dat
 `default` is the name of the pool, `size` is the number of connections to create for the pool. Or you can start the pool through `pgo:start_pool/2` which creates it as a child of `pgo`'s simple one for one:
 
 ``` erlang
+> application:ensure_all_started(pgo).
+{ok,[backoff,opentelemetry_api,pg_types,pgo]}
 > pgo:start_pool(default, #{pool_size => 5, host => "127.0.0.1", database => "test", user => "test"}). 
 ```
 
