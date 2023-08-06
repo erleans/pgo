@@ -37,7 +37,7 @@ To try `pgo` simply modify `config/example.config` by replacing the `host`, `dat
 
 ``` erlang
 > application:ensure_all_started(pgo).
-{ok,[]}
+{ok,[backoff,opentelemetry_api,pg_types,pgo]}
 > pgo:start_pool(default, #{pool_size => 5, host => "127.0.0.1", database => "test", user => "test"}). 
 ```
 
