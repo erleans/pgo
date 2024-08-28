@@ -13,6 +13,7 @@ all() ->
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
+    application:ensure_all_started(tls_certificate_check),
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
                                              port => 5432,
