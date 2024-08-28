@@ -14,8 +14,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        otp_version: ['24.3.4']
-        rebar3_version: ['3.18.0']
+        otp_version: ['25', '26']
+        rebar3_version: ['3.23']
         os: [ubuntu-22.04]
     env:
       OTP_VERSION: ${{ matrix.otp_version }}
@@ -61,8 +61,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        otp_version: ['24.3.4']
-        rebar3_version: ['3.18.0']
+        otp_version: ['25', '26']
+        rebar3_version: ['3.23']
         os: [ubuntu-22.04]
     steps:
     - uses: actions/checkout@v2
