@@ -27,14 +27,14 @@ jobs:
       with:
         otp-version: ${{ matrix.otp_version }}
         rebar3-version: ${{ matrix.rebar3_version }}
-    # - uses: actions/cache@v2
-    #   name: Cache
-    #   with:
-    #     path: |
-    #       _build
-    #     key: ${{ runner.os }}-build-${{ matrix.otp_version }}-${{ hashFiles(format('rebar.lock')) }}-2
-    #     restore-keys: |
-    #       ${{ runner.os }}-build-${{ matrix.otp_version }}-2-
+    - uses: actions/cache@v2
+      name: Cache
+      with:
+        path: |
+          _build
+        key: ${{ runner.os }}-build-${{ matrix.otp_version }}-${{ hashFiles(format('rebar.lock')) }}-2
+        restore-keys: |
+          ${{ runner.os }}-build-${{ matrix.otp_version }}-2-
     - name: Compile
       run: rebar3 compile
     - name: Common Test tests
@@ -70,14 +70,14 @@ jobs:
       with:
         otp-version: ${{ matrix.otp_version }}
         rebar3-version: ${{ matrix.rebar3_version }}
-    # - uses: actions/cache@v2
-    #   name: Cache
-    #   with:
-    #     path: |
-    #       _build
-    #     key: ${{ runner.os }}-build-${{ matrix.otp_version }}-${{ hashFiles('rebar.lock') }}-2
-    #     restore-keys: |
-    #       ${{ runner.os }}-dialyzer-${{ matrix.otp_version }}-2-
+    - uses: actions/cache@v2
+      name: Cache
+      with:
+        path: |
+          _build
+        key: ${{ runner.os }}-build-${{ matrix.otp_version }}-${{ hashFiles('rebar.lock') }}-2
+        restore-keys: |
+          ${{ runner.os }}-dialyzer-${{ matrix.otp_version }}-2-
     - name: Compile
       run: rebar3 compile
     - name: Dialyzer
