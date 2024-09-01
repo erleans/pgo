@@ -51,7 +51,7 @@ init_per_group(ssl, Config) ->
     application:ensure_all_started(pgo),
 
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
-                                             port => 5432,
+                                             port => 5434,
                                              ssl => true,
                                              database => "test",
                                              user => "test",
