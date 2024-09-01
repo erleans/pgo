@@ -65,9 +65,8 @@ trace_with_parent_query(_Config) ->
     SpanCtx = ?start_span(<<"parent-of-query">>),
     ?set_current_span(SpanCtx),
 
-    ?assertMatch(#{rows := [_]},
-                 % TODO: Some decoding issue here when this is '[1, 2)'
-                 pgo:query("select '[1,1)'::int4range", [], #{trace => true})),
+    ?assertMatch(#{rows := [{{{1,2},{true,false}}}]},
+                 pgo:query("select '[1,2)'::int4range", [], #{trace => true})),
 
     receive
         {span, #span{name=Name,
@@ -95,8 +94,9 @@ trace_with_parent_query(_Config) ->
 
 trace_transaction(_Config) ->
     pgo:transaction(fun() ->
-                            ?assertMatch(#{rows := [_]}, pgo:query("select '[1,1)'::int4range"))
-                    end, #{}),
+        ?assertMatch(#{rows := [{{{1,3},{true,false}}}]}, 
+            pgo:query("select '[1,3)'::int4range"))
+    end, #{}),
 
     receive
         {span, #span{name = <<"pgo:transaction/2">>,
@@ -114,7 +114,7 @@ trace_transaction(_Config) ->
       <<"db.system">> := DbSystem,
       <<"db.user">> := DbUser} = RecievedAttributes,
     ?assertMatch(DbName, <<"test">>),
-    ?assertMatch(DbStatement, <<"select '[1,1)'::int4range">>),
+    ?assertMatch(DbStatement, <<"select '[1,3)'::int4range">>),
     ?assertMatch(DbSystem, <<"postgresql">>),
     ?assertMatch(DbUser, <<"test">>),
     ok.
