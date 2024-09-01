@@ -95,7 +95,7 @@ trace_with_parent_query(_Config) ->
 
 trace_transaction(_Config) ->
     pgo:transaction(fun() ->
-                            ?assertMatch(#{rows := [_]}, pgo:query("select '[1,2)'::int4range"))
+                            ?assertMatch(#{rows := [_]}, pgo:query("select '[1,1)'::int4range"))
                     end, #{}),
 
     receive
@@ -114,13 +114,13 @@ trace_transaction(_Config) ->
       <<"db.system">> := DbSystem,
       <<"db.user">> := DbUser} = RecievedAttributes,
     ?assertMatch(DbName, <<"test">>),
-    ?assertMatch(DbStatement, <<"select '[1,2)'::int4range">>),
+    ?assertMatch(DbStatement, <<"select '[1,1)'::int4range">>),
     ?assertMatch(DbSystem, <<"postgresql">>),
     ?assertMatch(DbUser, <<"test">>),
     ok.
 
 no_statement(_Config) ->
-    pgo:query("select '[1,3)'::int4range", [], #{include_statement_span_attribute => false}),
+    pgo:query("select '[1,1)'::int4range", [], #{include_statement_span_attribute => false}),
 
     #span{attributes={attributes, 128, infinity, 0, RecievedAttributes}} = 
         ?assertReceive(<<"pgo:query/3">>),
