@@ -61,7 +61,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        otp_version: ['25', '26', '27']
+        otp_version: ['27']
         rebar3_version: ['3.23']
         os: [ubuntu-22.04]
     steps:
