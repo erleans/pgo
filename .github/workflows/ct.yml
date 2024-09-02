@@ -19,6 +19,7 @@ jobs:
         os: [ubuntu-22.04]
     env:
       OTP_VERSION: ${{ matrix.otp_version }}
+      LANG: en_US.UTF-8
     steps:
     - uses: actions/checkout@v2
     - name: Run Collector
