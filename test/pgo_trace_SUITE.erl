@@ -7,7 +7,7 @@
 -include_lib("opentelemetry/include/otel_span.hrl").
 
 all() ->
-    [trace_query, trace_transaction, no_statement].
+    [trace_query, trace_with_parent_query, trace_transaction, no_statement].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
@@ -47,8 +47,8 @@ end_per_testcase(_, _Config) ->
         end).
 
 trace_query(_Config) ->
-    ?assertMatch(#{rows := [{empty}]},
-                 pgo:query("select '[1,1)'::int4range", [], #{})),
+    ?assertMatch(#{rows := [{1}]},
+                 pgo:query("select '1'::int", [], #{})),
     #span{attributes={attributes, 128, infinity, 0, RecievedAttributes}} = 
         ?assertReceive(<<"pgo:query/3">>),
     #{<<"db.name">> := DbName,
@@ -56,20 +56,17 @@ trace_query(_Config) ->
       <<"db.system">> := DbSystem,
       <<"db.user">> := DbUser} = RecievedAttributes,
     ?assertMatch(DbName, <<"test">>),
-    ?assertMatch(DbStatement, <<"select '[1,1)'::int4range">>),
+    ?assertMatch(DbStatement, <<"select '1'::int">>),
     ?assertMatch(DbSystem, <<"postgresql">>),
     ?assertMatch(DbUser, <<"test">>),
     ok.
 
-% This test is flaky when running 'rebar3 ct'. However, if you run it
-% via 'rebar3 ct --suite=test/pgo_trace_SUITE.erl' it is fine. Please add
-% it back to all/0 when the issue is understood.
 trace_with_parent_query(_Config) ->
     SpanCtx = ?start_span(<<"parent-of-query">>),
     ?set_current_span(SpanCtx),
 
-    ?assertMatch(#{rows := [{{{1,2},{true,false}}}]},
-                 pgo:query("select '[1,2)'::int4range", [], #{trace => true})),
+    ?assertMatch(#{rows := [{1}]},
+                 pgo:query("select '1'::int", [], #{trace => true})),
 
     receive
         {span, #span{name=Name,
@@ -97,8 +94,8 @@ trace_with_parent_query(_Config) ->
 
 trace_transaction(_Config) ->
     pgo:transaction(fun() ->
-        ?assertMatch(#{rows := [{{{1,3},{true,false}}}]}, 
-            pgo:query("select '[1,3)'::int4range"))
+        ?assertMatch(#{rows := [{1}]}, 
+            pgo:query("select '1'::int"))
     end, #{}),
 
     receive
@@ -117,13 +114,13 @@ trace_transaction(_Config) ->
       <<"db.system">> := DbSystem,
       <<"db.user">> := DbUser} = RecievedAttributes,
     ?assertMatch(DbName, <<"test">>),
-    ?assertMatch(DbStatement, <<"select '[1,3)'::int4range">>),
+    ?assertMatch(DbStatement, <<"select '1'::int">>),
     ?assertMatch(DbSystem, <<"postgresql">>),
     ?assertMatch(DbUser, <<"test">>),
     ok.
 
 no_statement(_Config) ->
-    pgo:query("select '[1,1)'::int4range", [], #{include_statement_span_attribute => false}),
+    pgo:query("select '1'::int", [], #{include_statement_span_attribute => false}),
 
     #span{attributes={attributes, 128, infinity, 0, RecievedAttributes}} = 
         ?assertReceive(<<"pgo:query/3">>),
