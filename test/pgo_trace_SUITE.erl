@@ -7,7 +7,7 @@
 -include_lib("opentelemetry/include/otel_span.hrl").
 
 all() ->
-    [trace_query, trace_with_parent_query, trace_transaction, no_statement].
+    [trace_query, trace_transaction, no_statement].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
@@ -61,6 +61,9 @@ trace_query(_Config) ->
     ?assertMatch(DbUser, <<"test">>),
     ok.
 
+% This test is flaky when running 'rebar3 ct'. However, if you run it
+% via 'rebar3 ct --suite=test/pgo_trace_SUITE.erl' it is fine. Please add
+% it back to all/0 when the issue is understood.
 trace_with_parent_query(_Config) ->
     SpanCtx = ?start_span(<<"parent-of-query">>),
     ?set_current_span(SpanCtx),
