@@ -19,12 +19,17 @@ jobs:
         os: [ubuntu-22.04]
     env:
       OTP_VERSION: ${{ matrix.otp_version }}
-      LANG: en_US.UTF-8
-      LC_COLLATE: C
     steps:
-    - uses: actions/checkout@v2
-    - name: Run Collector
-      run: docker compose up -d
+    - uses: actions/checkout@v4
+    - uses: ikalnytskyi/action-setup-postgres@v6
+      id: postgres
+      with:
+        username: test
+        database: test
+        password: password
+        port: 5432
+        postgres-version: "14"
+        ssl: "on"
     - uses: erlef/setup-beam@v1
       with:
         otp-version: ${{ matrix.otp_version }}
