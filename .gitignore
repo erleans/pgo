@@ -15,3 +15,6 @@ erl_crash.dump
 .rebar
 logs
 _build
+
+.direnv/
+.envrc
