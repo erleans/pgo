@@ -92,12 +92,17 @@ close(#conn{socket=Socket}) ->
 open(Pool, PoolConfig) ->
     Host = maps:get(host, PoolConfig, ?DEFAULT_HOST),
     Port = maps:get(port, PoolConfig, ?DEFAULT_PORT),
+    ConnectHost = get_connect_address(Host, Port),
+    ConnectPort = case ConnectHost of
+                      {local, _} -> 0;
+                      _ -> Port
+                  end,
     SockOpts = maps:get(socket_options, PoolConfig, []),
     TraceDefault = maps:get(trace, PoolConfig, true),
     IncludeStatementDefault = maps:get(include_statement_span_attribute, PoolConfig, true),
     QueueDefault = maps:get(queue, PoolConfig, true),
     DefaultDecodeOpts = maps:get(decode_opts, PoolConfig, []),
-    case gen_tcp:connect(Host, Port, SockOpts ++ [binary, {packet, raw}, {active, false}]) of
+    case gen_tcp:connect(ConnectHost, ConnectPort, SockOpts ++ [binary, {packet, raw}, {active, false}]) of
         {ok, Socket} ->
             Conn = #conn{pool=Pool,
                          owner=self(),
@@ -683,3 +688,22 @@ decode_ready_for_query_message(<<$E>>) ->
     {ok, #ready_for_query{transaction_status=error}};
 decode_ready_for_query_message(Payload) ->
     {error, {unknown_message, ready_for_query, Payload}}.
+
+get_connect_address(Host, Port) ->
+    case Host of
+        "/" ++ _Path ->
+            % Host which looks like an absolute path
+            % is treated like a unix domain socket
+            {local, domain_socket_path(Host, Port)};
+        "@" ++ Path ->
+            % Host beginning with @ is treated like
+            % an abstract domain socket. The path
+            % to the socket should begin with \0.
+            {local, [0] ++ domain_socket_path(Path, Port)};
+        _ ->
+            Host
+    end.
+
+domain_socket_path(Dir, Port) ->
+    Socket = ".s.PGSQL." ++ integer_to_list(Port),
+    filename:join([Dir, Socket]).
