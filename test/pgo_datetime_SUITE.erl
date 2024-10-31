@@ -75,6 +75,8 @@ end_per_group(_, _Config) ->
     ok.
 
 select(_Config) ->
+    pgo:query("SET TIMEZONE TO 'UTC'"),
+    
     ?assertMatch(#{command := select,
                    rows := [{{2012,1,17}}]},
                  pgo:query("select '2012-01-17 10:54:03.45'::date")),
