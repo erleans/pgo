@@ -24,7 +24,7 @@ end_per_suite(_Config) ->
 
 select(_Config) ->
     ?assertMatch(#{command := select,
-                  rows := [{#{y := 2.0, x := 0.0}}]},
+                  rows := [{#{y := 2.0, x := +0.0}}]},
                  pgo:query("select '(0,2.0)'::point")).
 
 insert(_Config) ->
@@ -46,5 +46,5 @@ insert(_Config) ->
     ?assertMatch(#{command := select,
                   rows := [{#{x := 1.1, y := 74.9}},
                            {#{x := 3.2, y := 4.5}},
-                           {#{x := 0.0, y := 5.0}}]},
+                           {#{x := +0.0, y := 5.0}}]},
                  pgo:query("select a_point from points")).

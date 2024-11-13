@@ -49,10 +49,21 @@ init_per_group(clear, Config) ->
     Config;
 init_per_group(ssl, Config) ->
     application:ensure_all_started(pgo),
-
     {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
                                              port => 5434,
                                              ssl => true,
+                                             ssl_options => [{verify_type, verify_peer},
+                                                             {cacertfile, "../../../../test/certs/server.crt"},
+                                                             {verify_fun, {fun (_, valid, U) ->
+                                                                                   {valid, U};
+                                                                               (_, valid_peer, U) ->
+                                                                                   {valid, U};
+                                                                               (_, {bad_cert, selfsigned_peer}, U) ->
+                                                                                   {valid, U};
+                                                                               (_, Reason, _U) ->
+                                                                                   {fail, Reason}
+                                                                           end, []}}
+                                                            ],
                                              database => "test",
                                              user => "test",
                                              password => "password"}),
