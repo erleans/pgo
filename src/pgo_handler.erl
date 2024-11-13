@@ -339,7 +339,7 @@ setup_finish(Conn=#conn{socket_module=SocketModule,
 %% set_succeeded_or_within_failed_transaction({error, {error, _} = Error}) ->
 %%     error:is_in_failed_sql_transaction(Error).
 
--spec extended_query(#conn{}, iodata(), list(), pgo:decode_aopts(), any(), list()) -> pgo:result().
+-spec extended_query(#conn{}, iodata(), list(), pgo:decode_opts(), any(), list()) -> pgo:result().
 extended_query(Conn=#conn{socket=Socket,
                           socket_module=SocketModule,
                           pool=Pool}, Query, Parameters, DecodeOptions, PerRowFun, Acc0) ->
