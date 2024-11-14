@@ -173,8 +173,8 @@ timezone(_Config) ->
 
     ?assertMatch(#{command := insert},
                  pgo:query("insert into timezone_table (a_timestamp) VALUES ($1)",
-                           [{{2012,1,17},{10,54,3.45},-4}])). % EDT timezone
+                           [{{2012,1,17},{10,54,3.45},-4}])),
 
-    %% ?assertMatch(#{command := select,
-    %%                rows := [1326812043450000]},
-    %%             pgo:query("select a_timestamp from timezone_table")).
+    ?assertMatch(#{command := select,
+                   rows := [{{{2012,1,17},{6,54,3.45}}}]},
+                pgo:query("select a_timestamp from timezone_table")).
