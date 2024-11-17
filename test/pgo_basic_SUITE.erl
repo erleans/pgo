@@ -10,16 +10,12 @@
 -define(TXT_UUID, <<"727F42A6-E6A0-4223-9B72-6A5EB7436AB5">>).
 
 all() ->
-    case os:getenv("CIRCLECI") of
-        false ->
-            [{group, clear}, {group, ssl}];
-        _ ->
-            [{group, clear}]
-    end.
+    [{group, clear}, {group, ssl}].
 
 groups() ->
     [{clear, [], cases()},
-     {ssl, [], cases()}].
+     {ssl, [], [int4_range]},
+     {domain_socket, [], [int4_range]}].
 
 cases() ->
     [exceptions, select, insert_update, text_types,
@@ -68,8 +64,24 @@ init_per_group(ssl, Config) ->
                                              user => "test",
                                              password => "password"}),
 
+    Config;
+init_per_group(domain_socket, Config) ->
+    application:ensure_all_started(pgo),
+
+    {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
+                                             port => 5432,
+                                             host => "/tmp/postgresql",
+                                             database => "test",
+                                             user => "test",
+                                             password => "password"}),
+
     Config.
 
+
+end_per_group(Group, _Config) when Group =:= ssl ; Group =:= domain_socket ->
+    application:stop(pgo),
+    pgo_test_utils:clear_types(default),
+    ok;
 end_per_group(_, _Config) ->
     pgo:query("drop table tmp"),
     pgo:query("drop table tmp_b"),
