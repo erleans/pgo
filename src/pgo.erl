@@ -13,6 +13,7 @@
          query/1,
          query/2,
          query/3,
+         query/4,
          transaction/1,
          transaction/2,
          transaction/3,
