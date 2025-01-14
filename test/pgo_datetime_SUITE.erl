@@ -9,7 +9,7 @@ all() ->
     [{group, erl_datetime}, {group, as_integer}, {group, as_float}, {group, as_micro}].
 
 groups() ->
-    [{erl_datetime, [], [select, insert, interval, timezone]},
+    [{erl_datetime, [], [select, insert, interval, timestamptz]},
      {as_micro, [], [as_micro]},
      {as_integer, [], [as_integer]},
      {as_float, [], [as_float]}].
@@ -167,14 +167,14 @@ as_micro(_Config) ->
                    rows := [{1326797643450000, 1326797643450000}]},
                  pgo:query("select a_timestamp, b_timestamp from times")).
 
-timezone(_Config) ->
+timestamptz(_Config) ->
     ?assertMatch(#{command := create},
-                 pgo:query("create temporary table timezone_table (a_timestamp timestamptz)")),
+                 pgo:query("create temporary table timestamptz_table (a_timestamp_with_timezone timestamptz)")),
 
     ?assertMatch(#{command := insert},
-                 pgo:query("insert into timezone_table (a_timestamp) VALUES ($1)",
-                           [{{2012,1,17},{10,54,3.45},-4}])),
+                 pgo:query("insert into timestamptz_table (a_timestamp_with_timezone) VALUES ($1)",
+                           [{{2012,1,17},{10,54,3.45},{-4, 15}}])),
 
     ?assertMatch(#{command := select,
-                   rows := [{{{2012,1,17},{6,54,3.45}}}]},
-                pgo:query("select a_timestamp from timezone_table")).
+                   rows := [{{{2012,1,17},{15,9,3.45}}}]},
+                pgo:query("select a_timestamp_with_timezone from timestamptz_table")).
