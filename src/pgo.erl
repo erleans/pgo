@@ -22,10 +22,7 @@
          checkout/2,
          checkin/2,
          break/1,
-         format_error/1,
-        string_to_hex_list/2,
-        hex_list_to_data/1
-        ]).
+         format_error/1]).
 
 
 -include("pgo_internal.hrl").
@@ -35,14 +32,6 @@
               error/0,
               pool_config/0,
               decode_fun/0]).
-
-string_to_hex_list([O, T | Rest], Acc) ->
-    string_to_hex_list(Rest, Acc ++ [[O, T]]);
-string_to_hex_list([], Acc) ->
-    Acc.
-
-hex_list_to_data(HexList) ->
-    << <<(list_to_integer(H, 16))>> || H <- HexList >>.
 
 -type result() :: #{command := atom(),
                     num_rows := integer() | table,
