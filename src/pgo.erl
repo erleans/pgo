@@ -24,7 +24,6 @@
          break/1,
          format_error/1]).
 
-
 -include("pgo_internal.hrl").
 -include_lib("opentelemetry_api/include/otel_tracer.hrl").
 
