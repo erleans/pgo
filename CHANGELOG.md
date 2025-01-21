@@ -6,6 +6,8 @@
 
 - Support unix domain socket host names
   [#90](https://github.com/erleans/pgo/pull/90)
+- Export `pgo:query/4` to support passing a connection directly to `query`
+  [#95](https://github.com/erleans/pgo/pull/95)
 
 ### Fixed
 

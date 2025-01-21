@@ -22,7 +22,8 @@ cases() ->
      rows_as_maps, json_jsonb, types,
      int4_range, ts_range, tstz_range, numerics,
      hstore, records, circle, path, polygon, line,
-     line_segment, tid, bit_string, arrays, tsvector].
+     line_segment, tid, bit_string, arrays, tsvector,
+     query_arity_4].
 
 init_per_suite(Config) ->
     application:load(pg_types),
@@ -437,3 +438,12 @@ tsvector(_Config) ->
                  pgo:query("SELECT $1::tsvector", [[{<<"a">>,[{1,'A'}]},
                                                     {<<"cat">>,[{5,null}]},
                                                     {<<"fat">>,[{2,'B'},{4,'C'}]}]])).
+
+query_arity_4(_Config) ->
+    {ok, Ref, Conn} = pgo:checkout(default),
+
+    ?assertMatch(#{rows := [{1}]}, pgo:query("select 1", [], #{}, Conn)),
+
+    pgo:checkin(Ref, Conn),
+
+    ok.
