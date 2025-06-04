@@ -171,6 +171,14 @@ timestamptz(_Config) ->
     ?assertMatch(#{command := create},
                  pgo:query("create temporary table timestamptz_table (a_timestamp_with_timezone timestamptz)")),
 
+
+    % Negative minute offsets are not allowed by pg_types
+    % Hour offsets are technically limited over the wire, but the library
+    % handles conversion so we don't have limitations on the hour offset
+    ?assertMatch({error, #{error := badarg_encoding}},
+                 pgo:query("insert into timestamptz_table (a_timestamp_with_timezone) VALUES ($1)",
+                           [{{2012,1,17},{10,54,3.45},{-4, -15}}])),
+
     ?assertMatch(#{command := insert},
                  pgo:query("insert into timestamptz_table (a_timestamp_with_timezone) VALUES ($1)",
                            [{{2012,1,17},{10,54,3.45},{-4, 15}}])),
