@@ -9,7 +9,7 @@ all() ->
     [{group, erl_datetime}, {group, as_integer}, {group, as_float}, {group, as_micro}].
 
 groups() ->
-    [{erl_datetime, [], [select, insert, interval]},
+    [{erl_datetime, [], [select, insert, interval, timestamptz]},
      {as_micro, [], [as_micro]},
      {as_integer, [], [as_integer]},
      {as_float, [], [as_float]}].
@@ -166,3 +166,22 @@ as_micro(_Config) ->
     ?assertMatch(#{command := select,
                    rows := [{1326797643450000, 1326797643450000}]},
                  pgo:query("select a_timestamp, b_timestamp from times")).
+
+timestamptz(_Config) ->
+    ?assertMatch(#{command := create},
+                 pgo:query("create temporary table timestamptz_table (a_timestamp_with_timezone timestamptz)")),
+
+    % Negative minute offsets are not allowed by pg_types
+    % Hour offsets are technically limited over the wire, but the library
+    % handles conversion so we don't have limitations on the hour offset
+    ?assertMatch({error, #{error := badarg_encoding}},
+                 pgo:query("insert into timestamptz_table (a_timestamp_with_timezone) VALUES ($1)",
+                           [{{2012,1,17},{10,54,3.45},{-4, -15}}])),
+
+    ?assertMatch(#{command := insert},
+                 pgo:query("insert into timestamptz_table (a_timestamp_with_timezone) VALUES ($1)",
+                           [{{2012,1,17},{10,54,3.45},{-4, 15}}])),
+
+    ?assertMatch(#{command := select,
+                   rows := [{{{2012,1,17},{15,9,3.45}}}]},
+                pgo:query("select a_timestamp_with_timezone from timestamptz_table")).
