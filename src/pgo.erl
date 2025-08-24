@@ -29,7 +29,8 @@
 -export_type([result/0,
               error/0,
               pool_config/0,
-              decode_fun/0]).
+              decode_fun/0,
+              decode_option/0]).
 
 -type result() :: #{command := atom(),
                     num_rows := integer() | table,
@@ -67,7 +68,7 @@
                          idle_interval => integer(),
 
                          %% gen_tcp socket options
-                         socket_options => [gen_tcp:socket_option()],
+                         socket_options => [gen_tcp:option()],
 
                          %% defaults for options used at query time
                          queue => boolean(),
@@ -209,16 +210,16 @@ with_conn(Conn, Fun) ->
     end.
 
 %% @doc Returns a connection from the pool.
--spec checkout(atom()) -> {ok, pgo_pool:pool_ref(), pgo_pool:conn()} | {error, any()}.
+-spec checkout(atom()) -> {ok, pgo_pool:ref(), pgo_pool:conn()} | {error, any()}.
 checkout(Pool) ->
     pgo_pool:checkout(Pool, []).
 
--spec checkout(atom(), [pool_option()]) -> {ok, pgo_pool:pool_ref(), pgo_pool:conn()} | {error, any()}.
+-spec checkout(atom(), [pool_option()]) -> {ok, pgo_pool:ref(), pgo_pool:conn()} | {error, any()}.
 checkout(Pool, Options) ->
     pgo_pool:checkout(Pool, Options).
 
 %% @doc Return a checked out connection to its pool
--spec checkin(pgo_pool:pool_ref(), pgo_pool:conn()) -> ok.
+-spec checkin(pgo_pool:ref(), pgo_pool:conn()) -> ok.
 checkin(Ref, Conn) ->
     pgo_pool:checkin(Ref, Conn, []).
 

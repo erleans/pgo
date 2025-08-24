@@ -106,7 +106,7 @@ encode_parse_message(PreparedStatementName, Query, DataTypes) ->
 %%--------------------------------------------------------------------
 %% @doc Encode a bind message.
 %%
--spec encode_bind_message(pg_pool:conn(), iodata(), iodata(), [any()], [pg_types:oid()]) -> iolist().
+-spec encode_bind_message(#conn{}, iodata(), iodata(), [any()], [pg_types:oid()]) -> iolist().
 encode_bind_message(Conn=#conn{pool=Pool}, PortalName, StatementName, Parameters, ParametersDataTypes) ->
     ParametersCount = length(Parameters),
     ParametersCountBin = <<ParametersCount:16/integer>>,
@@ -511,7 +511,8 @@ decode_error_and_notice_message_fields0(<<FieldType, Rest0/binary>>, Acc) ->
     end;
 decode_error_and_notice_message_fields0(Bin, _Acc) -> {error, {badarg, Bin}}.
 
--spec decode_error_and_mention_field_type(byte()) -> pgsql_error:pgsql_error_and_mention_field_type().
+%% TODO
+%% -spec decode_error_and_mention_field_type(byte()) -> pgsql_error:pgsql_error_and_mention_field_type().
 decode_error_and_mention_field_type($S) -> severity;
 decode_error_and_mention_field_type($C) -> code;
 decode_error_and_mention_field_type($M) -> message;

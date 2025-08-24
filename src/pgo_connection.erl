@@ -49,7 +49,7 @@ ping(Pid, Holder, _Conn) ->
 stop(Pid, Holder, _Conn) ->
     gen_statem:cast(Pid, {stop, Holder}).
 
--spec disconnect(pid(), ets:tid(), {error, atom()}, pg_pool:conn()) -> ok.
+-spec disconnect(pid(), ets:tid(), {error, atom()}, pgo_pool:conn()) -> ok.
 disconnect(Pid, Holder, _Err, _Conn) ->
     %% maybe log Err?
     gen_statem:cast(Pid, {disconnect, Holder}).

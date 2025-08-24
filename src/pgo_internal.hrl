@@ -282,14 +282,16 @@
 }).
 -record(empty_query_response, {}).
 -record(error_response, {
-    fields :: [pgsql_error:pgsql_error_and_mention_field()] | #{error_field() => binary()}
+    fields %% TODO
+           %% :: [pgsql_error:pgsql_error_and_mention_field()] | #{error_field() => binary()}
 }).
 -record(function_call_response, {
     value :: null | iodata()
 }).
 -record(no_data, {}).
 -record(notice_response, {
-    fields :: [pgsql_error:pgsql_error_and_mention_field()] | #{error_field() => binary()}
+    fields %% TODO
+           %% :: [pgsql_error:pgsql_error_and_mention_field()] | #{error_field() => binary()}
 }).
 -record(notification_response, {
     procid :: pgsql_procid(),

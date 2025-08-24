@@ -65,7 +65,8 @@ extended_query(Socket, Query, Parameters) ->
 extended_query(Socket, Query, Parameters, Timings) when is_map(Timings) ->
     extended_query(Socket, Query, Parameters, [], Timings).
 
--spec extended_query(#conn{}, iodata(), list(), pgo:decode_opts(), map()) -> pgo:result().
+%% TODO
+%% -spec extended_query(#conn{}, iodata(), list(), pgo:decode_option(), map()) -> pgo:result().
 extended_query(Socket, Query, Parameters, DecodeOptions, _Timings) ->
     DecodeFun = proplists:get_value(decode_fun, DecodeOptions, undefined),
     extended_query(Socket, Query, Parameters, DecodeOptions, DecodeFun, []).
@@ -243,7 +244,7 @@ auth_scram(Conn, Options) ->
             Error
     end.
 
--spec scram_client_first(pgo_scram:nonce(), #conn{}, maps:map()) -> {ok, term()} | {error, #error_response{}} | {error, term()}.
+-spec scram_client_first(pgo_scram:nonce(), #conn{}, #{user => iodata()}) -> {ok, term()} | {error, #error_response{}} | {error, term()}.
 scram_client_first(Nonce, #conn{socket_module=SocketModule,
                                 socket=Socket,
                                 pool=Pool}, Options) ->
@@ -258,7 +259,7 @@ scram_client_first(Nonce, #conn{socket_module=SocketModule,
             SendError
     end.
 
--spec scram_client_final(pgo_scram:nonce(), binary(), #conn{}, maps:map()) -> {{ok, term()}, binary()} | {{error, term()}, binary()} | {error, term()}.
+-spec scram_client_final(pgo_scram:nonce(), binary(), #conn{}, #{user => iodata(), password => iodata()}) -> {{ok, term()}, binary()} | {{error, term()}, binary()} | {error, term()}.
 scram_client_final(Nonce, ServerFirst, #conn{socket_module=SocketModule,
                                              socket=Socket,
                                              pool=Pool}, Options) ->
@@ -334,7 +335,8 @@ setup_finish(Conn=#conn{socket_module=SocketModule,
 %% set_succeeded_or_within_failed_transaction({error, {error, _} = Error}) ->
 %%     error:is_in_failed_sql_transaction(Error).
 
--spec extended_query(#conn{}, iodata(), list(), pgo:decode_aopts(), any(), list()) -> pgo:result().
+%% TODO
+%% -spec extended_query(#conn{}, iodata(), list(), pgo:decode_option(), any(), list()) -> pgo:result().
 extended_query(Conn=#conn{socket=Socket,
                           socket_module=SocketModule,
                           pool=Pool}, Query, Parameters, DecodeOptions, PerRowFun, Acc0) ->
@@ -396,7 +398,7 @@ encode_bind_describe_execute(Conn, Parameters, ParameterDataTypes) ->
 %% requires_statement_description(_Parameters) ->
 %%     true. %pgo_protocol:bind_requires_statement_description(Parameters).
 
--spec receive_loop(extended_query_loop_state(), pgo:decode_fun(), list(), list(), pgo:conn())
+-spec receive_loop(extended_query_loop_state(), pgo:decode_fun(), list(), list(), #conn{})
                   -> pgo:result().
 receive_loop(LoopState, DecodeFun, Acc0, DecodeOptions, Conn=#conn{socket=Socket,
                                                                    socket_module=SocketModule}) ->
