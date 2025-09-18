@@ -73,7 +73,7 @@ init({QueueTid, Pool, PoolName, Sup, PoolConfig}) ->
     erlang:process_flag(trap_exit, true),
     Retries = maps:get(max_conn_retries, PoolConfig, 0),
     B = backoff:init(1000, 10000),
-    io:format("pgo_conn init ~p => ~p~n", [PoolName, PoolConfig]), 
+    ?LOG_DEBUG("pgo_conn init ~p => ~p~n", [PoolName, PoolConfig]), 
     {ok, disconnected, #data{backoff=B,
                              pool=Pool,
                              broker=PoolName,
@@ -96,7 +96,6 @@ disconnected(EventType, _, Data=#data{broker=Broker,
                                       pool_config=PoolConfig}) when EventType =:= internal
                                                                     ; EventType =:= timeout
                                                                     ; EventType =:= state_timeout ->
-    io:format("pgo_conn disconnected ~p~n", [Data]), 
     try pgo_handler:open(Broker, PoolConfig) of
         {ok, Conn} ->
             ?LOG_DEBUG("connected: ~p", [Conn]),
@@ -119,7 +118,6 @@ disconnected(EventType, _, Data=#data{broker=Broker,
                                                   backoff=B1},
               [{state_timeout, Backoff, connect}]};
             true ->
-              io:format("pgo_conn aborting ~p~n", [Data]), 
               ?LOG_INFO(#{at => connecting,
                           reason => "too many retries, aborting connection."},
                         #{report_cb => fun ?MODULE:report_cb/1}),
@@ -157,7 +155,6 @@ dequeued(EventType, EventContent, Data) ->
     handle_event(EventType, EventContent, Data).
 
 aborted(internal = _EventType, EventContent, Data=#data{broker=PoolName}) ->
-  io:format("pgo_conn connection pool ~p aborted after ~p retries ~p~n", [PoolName, EventContent, Data]),
   PoolName ! force_stop, 
   {stop, normal, Data}.
 
