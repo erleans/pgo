@@ -35,7 +35,8 @@
                sup :: pid(),
                backoff :: backoff:backoff(),
                max_retries :: integer(),
-               retries :: integer()}).
+               retries :: integer(),
+              notify :: pid() | atom() | undefined}).
 
 start_link(QueueTid, PoolPid, PoolName, Sup, PoolConfig) ->
     gen_statem:start_link(?MODULE, {QueueTid, PoolPid, PoolName, Sup, PoolConfig}, []).
@@ -72,6 +73,7 @@ break(#conn{owner=Pid}) ->
 init({QueueTid, Pool, PoolName, Sup, PoolConfig}) ->
     erlang:process_flag(trap_exit, true),
     Retries = maps:get(max_conn_retries, PoolConfig, 0),
+    Notify = maps:get(notify, PoolConfig, undefined),
     B = backoff:init(1000, 10000),
     ?LOG_DEBUG("pgo_conn init ~p => ~p~n", [PoolName, PoolConfig]), 
     {ok, disconnected, #data{backoff=B,
@@ -81,7 +83,9 @@ init({QueueTid, Pool, PoolName, Sup, PoolConfig}) ->
                              sup=Sup,
                              pool_config=PoolConfig,
                              max_retries=Retries,
-                             retries = Retries},
+                             retries=Retries,
+                             notify=Notify
+                            },
      {next_event, internal, connect}}.
 
 callback_mode() ->
@@ -101,6 +105,7 @@ disconnected(EventType, _, Data=#data{broker=Broker,
             ?LOG_DEBUG("connected: ~p", [Conn]),
             Holder = pgo_pool:update(Pool, QueueTid, ?MODULE, Conn),
             {_, B1} = backoff:succeed(B),
+            notify(Data, {Pool, up}), 
             {next_state, enqueued, Data#data{conn=Conn,
                                              holder=Holder,
                                              backoff=B1}};
@@ -155,7 +160,8 @@ dequeued(EventType, EventContent, Data) ->
     handle_event(EventType, EventContent, Data).
 
 aborted(internal = _EventType, EventContent, Data=#data{broker=PoolName}) ->
-  PoolName ! force_stop, 
+  PoolName ! force_stop,
+  notify(Data, {PoolName, down}), 
   {stop, normal, Data}.
 
 
@@ -223,6 +229,19 @@ terminate(Reason, State, #data{conn=Conn}) ->
         _ -> pgo_handler:close(Conn)
     end,
     ok.    
+
+
+notify(#data{notify=undefined}, Msg) -> ok;
+notify(Data = #data{notify=Notify}, Msg) when is_atom(Notify) ->
+  case whereis(Notify) of  
+    APid when is_pid(APid) -> notify(Data#data{notify=APid}, Msg);
+    _ -> ok 
+  end;
+notify(#data{notify=NotifyPid}, Msg) when is_pid(NotifyPid) ->
+  IsAlive = is_process_alive(NotifyPid),
+  if IsAlive -> NotifyPid ! {pgo_notify, Msg};
+  true -> ok 
+end.
 
 %%
 
