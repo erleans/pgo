@@ -14,6 +14,7 @@
 -define(DEFAULT_HOST, "127.0.0.1").
 -define(DEFAULT_PORT, 5432).
 -define(DEFAULT_USER, "postgres").
+-define(DEFAULT_DB, "postgres").
 -define(DEFAULT_PASSWORD, "").
 
 % driver options.
@@ -110,7 +111,7 @@ open(Pool, PoolConfig) ->
                          parameters=#{},
                          trace=TraceDefault,
                          trace_attributes=[{<<"db.system">>, <<"postgresql">>},
-                                           {<<"db.name">>, iolist_to_binary(maps:get(database, PoolConfig))},
+                                           {<<"db.name">>, iolist_to_binary(maps:get(database, PoolConfig, ?DEFAULT_DB))},
                                            %% {<<"db.connection_string">>, <<"">>},
                                            {<<"db.user">>, iolist_to_binary(maps:get(user, PoolConfig, ?DEFAULT_USER))},
                                            {<<"net.peer.name">>, iolist_to_binary(Host)},
@@ -168,7 +169,7 @@ setup_startup(Conn=#conn{socket_module=SocketModule,
                         pool=Pool}, Options) ->
     % Send startup packet connection packet.
     User = maps:get(user, Options, ?DEFAULT_USER),
-    Database = maps:get(database, Options, User),
+    Database = maps:get(database, Options, ?DEFAULT_DB),
     ConnectionParams = maps:get(connection_parameters, Options, []),
     ConnectionParams1 = lists:keymerge(1, ConnectionParams,
                                        [{<<"application_name">>, atom_to_binary(node(), utf8)}]),

@@ -68,6 +68,7 @@
                          queue_target => integer(),
                          queue_interval => integer(),
                          idle_interval => integer(),
+                         max_conn_retries => integer(),         %% max connection retries, 0 = infinite
 
                          %% gen_tcp socket options
                          socket_options => [gen_tcp:connect_option()],
