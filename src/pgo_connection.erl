@@ -105,7 +105,7 @@ disconnected(EventType, _, Data=#data{broker=Broker,
             ?LOG_DEBUG("connected: ~p", [Conn]),
             Holder = pgo_pool:update(Pool, QueueTid, ?MODULE, Conn),
             {_, B1} = backoff:succeed(B),
-            notify(Data, {Pool, up}), 
+            notify(Data, {pg_pool, Pool, up}), 
             {next_state, enqueued, Data#data{conn=Conn,
                                              holder=Holder,
                                              backoff=B1}};
@@ -161,7 +161,7 @@ dequeued(EventType, EventContent, Data) ->
 
 aborted(internal = _EventType, EventContent, Data=#data{broker=PoolName}) ->
   PoolName ! force_stop,
-  notify(Data, {PoolName, down}), 
+  notify(Data, {pg_pool, PoolName, down}), 
   {stop, normal, Data}.
 
 
