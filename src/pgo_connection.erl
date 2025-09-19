@@ -159,7 +159,7 @@ enqueued(EventType, EventContent, Data) ->
 dequeued(EventType, EventContent, Data) ->
     handle_event(EventType, EventContent, Data).
 
-aborted(internal = _EventType, EventContent, Data=#data{broker=PoolName}) ->
+aborted(internal = _EventType, _EventContent, Data=#data{broker=PoolName}) ->
   PoolName ! force_stop,
   notify(Data, {pg_pool, PoolName, down}), 
   {stop, normal, Data}.
@@ -231,7 +231,7 @@ terminate(Reason, State, #data{conn=Conn}) ->
     ok.    
 
 
-notify(#data{notify=undefined}, Msg) -> ok;
+notify(#data{notify=undefined}, _Msg) -> ok;
 notify(Data = #data{notify=Notify}, Msg) when is_atom(Notify) ->
   case whereis(Notify) of  
     APid when is_pid(APid) -> notify(Data#data{notify=APid}, Msg);
