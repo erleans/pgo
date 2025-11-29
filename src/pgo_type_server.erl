@@ -11,6 +11,7 @@
 
 -include("pgo_internal.hrl").
 -include_lib("pg_types/include/pg_types.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -record(data, {pool        :: atom(),
                pool_config  :: pgo:pool_config(),
@@ -62,9 +63,13 @@ terminate(_, _, _Data) ->
 load(Pool, LastReload, RequestTime, PoolConfig) when LastReload < RequestTime ->
     try pgo_handler:open(Pool, PoolConfig) of
         {ok, Conn=#conn{parameters=Parameters}} ->
-            TypeInfos = load_and_update_types(Conn, Pool),
-            _ = pg_types:update(Pool, TypeInfos, Parameters),
-            TypeInfos;
+            case load_and_update_types(Conn, Pool) of
+                failed ->
+                    failed;
+                TypeInfos ->
+                    _ = pg_types:update(Pool, TypeInfos, Parameters),
+                    TypeInfos
+            end;
         {error, _} ->
             failed
     catch
@@ -86,22 +91,27 @@ load(_, _, _, _) ->
 
 load_and_update_types(Conn, Pool) ->
     try
-        {ok, Oids} = pgo_handler:simple_query(Conn, ?BOOTSTRAP_QUERY),
-        [#type_info{oid=binary_to_integer(Oid),
-                    pool=Pool,
-                    name=binary:copy(Name),
-                    typsend=binary:copy(Send),
-                    typreceive=binary:copy(Receive),
-                    typlen=binary_to_integer(Len),
-                    output=binary:copy(Output),
-                    input=binary:copy(Input),
-                    elem_oid=binary_to_integer(ArrayOid),
-                    base_oid=binary_to_integer(BaseOid),
-                    comp_oids=parse_array_oids(CompOids)}
-         || [Oid, Name, Send, Receive, Len, Output, Input, ArrayOid, BaseOid, CompOids] <- Oids]
+        case pgo_handler:simple_query(Conn, ?BOOTSTRAP_QUERY) of
+            {ok, Oids} ->
+                [#type_info{oid=binary_to_integer(Oid),
+                            pool=Pool,
+                            name=binary:copy(Name),
+                            typsend=binary:copy(Send),
+                            typreceive=binary:copy(Receive),
+                            typlen=binary_to_integer(Len),
+                            output=binary:copy(Output),
+                            input=binary:copy(Input),
+                            elem_oid=binary_to_integer(ArrayOid),
+                            base_oid=binary_to_integer(BaseOid),
+                            comp_oids=parse_array_oids(CompOids)}
+                 || [Oid, Name, Send, Receive, Len, Output, Input, ArrayOid, BaseOid, CompOids] <- Oids];
+            {error, {pgo_error, PgoError}} ->
+                ?LOG_WARNING("Unable to load type information. query failed with error: ~p", [PgoError]),
+                failed
+        end
     catch
-        _:_:_ ->
-
+        Class:Reason:Stacktrace ->
+            ?LOG_WARNING("Unable to load type information. pgo will not function properly: ~s", [erl_error:format_exception(Class, Reason, Stacktrace)]),
             failed
     after
         pgo_handler:close(Conn)
