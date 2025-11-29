@@ -18,6 +18,7 @@
          disconnected/3,
          enqueued/3,
          dequeued/3,
+         aborted/3,
          terminate/3]).
 
 -include("pgo_internal.hrl").
@@ -32,7 +33,10 @@
                broker :: atom(),
                pool :: pid(),
                sup :: pid(),
-               backoff :: backoff:backoff()}).
+               backoff :: backoff:backoff(),
+               max_retries :: integer(),
+               retries :: integer(),
+              notify :: pid() | atom() | undefined}).
 
 start_link(QueueTid, PoolPid, PoolName, Sup, PoolConfig) ->
     gen_statem:start_link(?MODULE, {QueueTid, PoolPid, PoolName, Sup, PoolConfig}, []).
@@ -68,13 +72,20 @@ break(#conn{owner=Pid}) ->
 
 init({QueueTid, Pool, PoolName, Sup, PoolConfig}) ->
     erlang:process_flag(trap_exit, true),
+    Retries = maps:get(max_conn_retries, PoolConfig, 0),
+    Notify = maps:get(notify, PoolConfig, undefined),
     B = backoff:init(1000, 10000),
+    ?LOG_DEBUG("pgo_conn init ~p => ~p~n", [PoolName, PoolConfig]), 
     {ok, disconnected, #data{backoff=B,
                              pool=Pool,
                              broker=PoolName,
                              queue=QueueTid,
                              sup=Sup,
-                             pool_config=PoolConfig},
+                             pool_config=PoolConfig,
+                             max_retries=Retries,
+                             retries=Retries,
+                             notify=Notify
+                            },
      {next_event, internal, connect}}.
 
 callback_mode() ->
@@ -82,6 +93,8 @@ callback_mode() ->
 
 disconnected(EventType, _, Data=#data{broker=Broker,
                                       backoff=B,
+                                      retries=Retry,
+                                      max_retries=MaxRetries,
                                       queue=QueueTid,
                                       pool=Pool,
                                       pool_config=PoolConfig}) when EventType =:= internal
@@ -89,31 +102,50 @@ disconnected(EventType, _, Data=#data{broker=Broker,
                                                                     ; EventType =:= state_timeout ->
     try pgo_handler:open(Broker, PoolConfig) of
         {ok, Conn} ->
+            ?LOG_DEBUG("connected: ~p", [Conn]),
             Holder = pgo_pool:update(Pool, QueueTid, ?MODULE, Conn),
             {_, B1} = backoff:succeed(B),
+            notify(Data, {pg_pool, Pool, up}), 
             {next_state, enqueued, Data#data{conn=Conn,
                                              holder=Holder,
                                              backoff=B1}};
         {error, Error} ->
             ?LOG_DEBUG("full error connecting to database: ~p", [Error]),
-            ?LOG_INFO(#{at => connecting,
-                        reason => Error},
-                      #{report_cb => fun ?MODULE:report_cb/1}),
+            Remaining = Retry-1,
             {Backoff, B1} = backoff:fail(B),
-            {next_state, disconnected, Data#data{broker=Broker,
-                                                 holder=undefined,
-                                                 backoff=B1},
-             [{state_timeout, Backoff, connect}]}
+            if MaxRetries == 0 orelse Remaining >= 1 ->
+              ?LOG_INFO(#{at => connecting,
+                          reason => Error},
+                        #{report_cb => fun ?MODULE:report_cb/1}),
+              {next_state, disconnected, Data#data{broker=Broker,
+                                                  holder=undefined,
+                                                  retries=Remaining,
+                                                  backoff=B1},
+              [{state_timeout, Backoff, connect}]};
+            true ->
+              ?LOG_INFO(#{at => connecting,
+                          reason => "too many retries, aborting connection."},
+                        #{report_cb => fun ?MODULE:report_cb/1}),
+              {next_state, aborted, Data#data{retries=0}, [{next_event, internal, MaxRetries}]}
+            end
     catch
         throw:Reason ->
-            ?LOG_INFO(#{at => connecting,
+            ?LOG_ERROR(#{at => connecting,
                         reason => Reason},
                       #{report_cb => fun ?MODULE:report_cb/1}),
+            Remaining = Retry-1,
             {Backoff, B1} = backoff:fail(B),
+            if MaxRetries == 0 orelse Remaining >= 1 ->
             {next_state, disconnected, Data#data{broker=Broker,
                                                  holder=undefined,
                                                  backoff=B1},
-             [{state_timeout, Backoff, connect}]}
+             [{state_timeout, Backoff, connect}]};
+            true ->
+              ?LOG_INFO(#{at => connecting,
+                          reason => "too many retries, aborting connection."},
+                        #{report_cb => fun ?MODULE:report_cb/1}),
+              {next_state, aborted, Data#data{retries=0}, [{next_event, internal, MaxRetries}]}
+            end
     end;
 disconnected(EventType, EventContent, Data) ->
     handle_event(EventType, EventContent, Data).
@@ -126,6 +158,12 @@ enqueued(EventType, EventContent, Data) ->
 
 dequeued(EventType, EventContent, Data) ->
     handle_event(EventType, EventContent, Data).
+
+aborted(internal = _EventType, _EventContent, Data=#data{broker=PoolName}) ->
+  PoolName ! force_stop,
+  notify(Data, {pg_pool, PoolName, down}), 
+  {stop, normal, Data}.
+
 
 handle_event(cast, {ping, Holder}, Data=#data{pool=Pool,
                                               holder=Holder,
@@ -150,6 +188,8 @@ handle_event(cast, {stop, Holder}, Data=#data{holder=Holder,
     pgo_handler:close(Conn),
     {stop, Data#data{conn=undefined,
                      holder=undefined}};
+handle_event(cast, {stop, undefined}, Data) ->
+    {stop, Data};
 %% ignore `stop' for a different holder -- means it is an old message
 handle_event(cast, {stop, _}, _Data) ->
     keep_state_and_data;
@@ -171,17 +211,37 @@ handle_event(info, {'EXIT', Socket, _Reason}, Data=#data{conn=#conn{socket=Socke
     close_and_reopen(Data);
 %% ignore `EXIT' for a different Socket -- means it is an old message
 handle_event(info, {'EXIT', _, _Reason}, _Data) ->
-    keep_state_and_data;
+   keep_state_and_data;
+%% 
 %% nothing to do for `ssl_closed' -- it should be handled by the `EXIT' handling
 handle_event(info, {ssl_closed, _}, _Data) ->
-    keep_state_and_data.
+    keep_state_and_data;
+handle_event(Type, Evt, _Data) ->
+  ?LOG_NOTICE("pgo_connection EVENT: ~p: ~p", [Type, Evt]),
+  keep_state_and_data.
+
 
 %% @private
-terminate(_Reason, _, #data{conn=undefined}) ->
-    ok;
-terminate(_Reason, _, #data{conn=Conn}) ->
-    pgo_handler:close(Conn),
-    ok.
+terminate(Reason, State, #data{conn=Conn}) ->
+    ?LOG_NOTICE("pgo_conn TERMINATING: Reason=~p, State=~p, Conn=~p~n", [Reason, State, Conn]),
+    case Conn of
+        undefined -> ok;
+        _ -> pgo_handler:close(Conn)
+    end,
+    ok.    
+
+
+notify(#data{notify=undefined}, _Msg) -> ok;
+notify(Data = #data{notify=Notify}, Msg) when is_atom(Notify) ->
+  case whereis(Notify) of  
+    APid when is_pid(APid) -> notify(Data#data{notify=APid}, Msg);
+    _ -> ok 
+  end;
+notify(#data{notify=NotifyPid}, Msg) when is_pid(NotifyPid) ->
+  IsAlive = is_process_alive(NotifyPid),
+  if IsAlive -> NotifyPid ! {pgo_notify, Msg};
+  true -> ok 
+end.
 
 %%
 

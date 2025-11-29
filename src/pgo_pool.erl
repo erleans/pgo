@@ -33,6 +33,7 @@
                 TimerRef :: reference() | undefined,
                 Holder :: ets:tid()}.
 
+
 -ifdef(TEST).
 -export([tid/1]).
 %% return the ets table id so tests can check state
@@ -66,6 +67,7 @@ checkin({Pool, Ref, Deadline, Holder}, Conn, _) ->
 disconnect({Pool, Ref, Deadline, Holder}, Err, Conn, _) ->
     cancel_deadline(Deadline),
     checkin_holder(Holder, Pool, Conn, {disconnect, Ref, Err}).
+
 
 stop({Pool, Ref, Deadline, Holder}, Err, Conn, _) ->
     cancel_deadline(Deadline),
@@ -110,6 +112,10 @@ normalize_pool_config_value(_, V) ->
 
 handle_call(tid, _From, {_, Queue, _} = D) ->
     {reply, Queue, D}.
+
+
+handle_info(force_stop, _) -> exit(normal);
+
 
 handle_info({db_connection, From, {checkout, Now, MaybeQueue}}, Busy={busy, Queue, _}) ->
     case MaybeQueue of

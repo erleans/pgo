@@ -29,6 +29,7 @@ init([]) ->
                  intensity => 5,
                  period => 10},
     ChildSpec = #{id => pgo_pool,
+                  restart => transient,
                   start => {pgo_pool, start_link, []},
                   shutdown => 1000},
     {ok, {SupFlags, [ChildSpec]}}.

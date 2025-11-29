@@ -77,6 +77,8 @@ Pool configuration includes the Postgres connection information, pool configurat
   queue_target => integer(),
   queue_interval => integer(),
   idle_interval => integer(),
+  max_conn_retries => integer(),         %% max connection retries, 0 = infinite
+  notify => pid() | undefined,           %% used to notify the connection pool connection state
 
   %% gen_tcp socket options
   socket_options => [gen_tcp:socket_option()],
@@ -127,6 +129,8 @@ decode_option() :: return_rows_as_maps | {return_rows_as_maps, boolean()} |
 * `pool_size` (default: 1): Number of connections to keep open with the database
 * `queue_target` (default: 50) and `queue_interval` (default: 1000): Checking out connections is handled through a queue. If it takes longer than `queue_target` to get out of the queue for longer than `queue_interval` then the `queue_target` will be doubled and checkouts will start to be dropped if that target is surpassed.
 * `idle_interval` (default: 1000): The database is pinged every `idle_interval` when the connection is idle.
+* `max_conn_retries` (default: 0): The max number of connection attempts in case of a pool  bad configuration or if postgres is not available at the pool creation time. A value of O means infinite retries, a positive integer will limit the number of retries. If 
+* `notify` (default: undefined): The pid or registered name of a process that will be notified of the connection pool state during initialization. The notified process is sent the message `{pg_pool, PoolName, up}` when at least one connection in the pool is successfully established; if no connection with the database can be completed after `max_conn_retries`, then the notified process will receive a `{pg_pool, PoolName, down}`.
 
 ### Erlang TCP Socket Settings
 

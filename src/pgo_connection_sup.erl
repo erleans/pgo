@@ -20,6 +20,7 @@ init([QueueTid, SupPid, PoolPid, PoolName, PoolConfig]) ->
                  intensity => 5,
                  period => 10},
     ChildSpecs = [#{id => pgo_connection,
+                     restart => transient,
                     start => {pgo_connection, start_link, [QueueTid, PoolPid, PoolName,
                                                            SupPid, PoolConfig]},
                     shutdown => 100}],
