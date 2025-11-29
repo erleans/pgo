@@ -19,6 +19,7 @@
          encode_copy_done/0,
          encode_copy_fail/1,
          decode_message/4,
+         decode_error_response_message/1,
          decode_row/4,
          decode_strings/1,
          bind_requires_statement_description/1,
