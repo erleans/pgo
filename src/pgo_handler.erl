@@ -634,6 +634,8 @@ simple_query_loop(#conn{socket=Socket}=Conn, Acc) ->
             simple_query_loop(Conn, Acc);
         {ok, #ready_for_query{}} ->
             {ok, Acc};
+        {ok, #error_response{fields=Fields}} ->
+            {error, {pgo_error, Fields}};
         {error, _} = ReceiveError ->
             ReceiveError
     end.
@@ -651,7 +653,9 @@ simple_receive_message(Socket, _Conn=#conn{socket_module=SocketModule}, _DecodeO
                         $C ->
                             {ok, command_complete};
                         $Z ->
-                            decode_ready_for_query_message(Rest)
+                            decode_ready_for_query_message(Rest);
+                        $E ->
+                            pgo_protocol:decode_error_response_message(Rest)
                     end;
                 {error, _} = ErrorRecvPacket ->
                     ErrorRecvPacket
