@@ -11,7 +11,7 @@ PG...Oh god not nother Postgres client in Erlang...
 * No message passing. Clients checkout the socket and use it directly.
 * Binary protocol with input oids cached.
 * Simple and direct. Tries to limit runtime options as much as possible.
-* Instrumented with [Telemetry](https://github.com/beam-telemetry/telemetry) and [OpenCensus](https://github.com/census-instrumentation/opencensus-erlang)
+* Instrumented with [OpenTelemetry](https://opentelemetry.io/)
 * Mix apps currently too hard to use in a Rebar3 project. 
 
 ## Requirements
