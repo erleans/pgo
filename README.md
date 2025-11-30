@@ -109,7 +109,7 @@ decode_option() :: return_rows_as_maps | {return_rows_as_maps, boolean()} |
 * `column_name_as_atom` (default: `false`): If `true` converts each column name in the result to an atom.
 * `decode_fun` (default: `undefined`): Optional function for performing transformations on each row in a result. It must be a 2-arity function returning a list or map for the row and takes the row (as a list or map) and a list of `#row_description_field{}` records.
 * `queue` (default: `true`): Whether to wait for a connection from the pool if none are available.
-* `trace` (default: `false`): `pgo` is instrumented with [OpenCensus](https://opencensus.io/) and when this option is `true` a span will be created (if sampled).
+* `trace` (default: `false`): `pgo` is instrumented with [OpenTelemetry](https://opencensus.io/) and when this option is `true` a span will be created (if sampled).
 
 ### Database Settings
 
