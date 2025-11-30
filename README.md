@@ -134,16 +134,14 @@ decode_option() :: return_rows_as_maps | {return_rows_as_maps, boolean()} |
 
 ## Telemetry and Tracing
 
-A [Telemetry](https://github.com/beam-telemetry/telemetry) event `[pgo, query]` can be attached to for receiving the time a query takes as well as other metadata for each query.
-
-[OpenCensus](https://opencensus.io/) spans can be enabled for queries and transactions by either setting the `trace_default` to `true` for the pool:
+[OpenTelemetry](https://opentelemetry.io/) spans can be enabled for queries and transactions by either setting the `trace` to `true` for the pool:
 
 ``` erlang
 > pgo:start_pool(default, #{host => "127.0.0.1", 
                             database => "test", 
                             user => "test",
                             pool_size => 5,
-                            trace_default => true}]). 
+                            trace => true}]). 
 ```
 
 Or by passing `#{trace => true}` in the options for a query or transaction:
@@ -158,7 +156,11 @@ Or by passing `#{trace => true}` in the options for a query or transaction:
 #{command => insert,num_rows => 1,rows => []}
 ```
 
-Note that since this is optional the `opencensus` application is not included as a dependency of `pgo`. So it must be included as a `rebar3` dependency and runtime dependency (listed in your application's `.app.src` `applications` or the list of applications for `relx` to include in a release).
+Note that since this is optional the `opentelemetry` application is not included
+as a dependency of `pgo` -- only `opentelemetry_api` is included by default. So
+it must be included as a `rebar3` dependency and runtime dependency (listed in
+your application's `.app.src` `applications` or the list of applications for
+`relx` to include in a release).
 
 ## Running Tests
 
