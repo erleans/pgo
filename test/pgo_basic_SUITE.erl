@@ -37,51 +37,51 @@ end_per_suite(_Config) ->
 init_per_group(clear, Config) ->
     application:ensure_all_started(pgo),
 
-    {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
-                                             port => 5432,
-                                             database => "test",
-                                             user => "test",
-                                             password => "password"}),
+    {ok, _} = pgo_sup:start_child(pgo_default, #{pool_size => 1,
+                                                 port => 5432,
+                                                 database => "test",
+                                                 user => "test",
+                                                 password => "password"}),
 
     Config;
 init_per_group(ssl, Config) ->
     application:ensure_all_started(pgo),
-    {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
-                                             port => 5434,
-                                             ssl => true,
-                                             ssl_options => [{verify_type, verify_peer},
-                                                             {cacertfile, "../../../../test/certs/server.crt"},
-                                                             {verify_fun, {fun (_, valid, U) ->
-                                                                                   {valid, U};
-                                                                               (_, valid_peer, U) ->
-                                                                                   {valid, U};
-                                                                               (_, {bad_cert, selfsigned_peer}, U) ->
-                                                                                   {valid, U};
-                                                                               (_, Reason, _U) ->
-                                                                                   {fail, Reason}
-                                                                           end, []}}
-                                                            ],
-                                             database => "test",
-                                             user => "test",
-                                             password => "password"}),
+    {ok, _} = pgo_sup:start_child(pgo_default, #{pool_size => 1,
+                                                 port => 5434,
+                                                 ssl => true,
+                                                 ssl_options => [{verify_type, verify_peer},
+                                                                 {cacertfile, "../../../../test/certs/server.crt"},
+                                                                 {verify_fun, {fun (_, valid, U) ->
+                                                                                       {valid, U};
+                                                                                   (_, valid_peer, U) ->
+                                                                                       {valid, U};
+                                                                                   (_, {bad_cert, selfsigned_peer}, U) ->
+                                                                                       {valid, U};
+                                                                                   (_, Reason, _U) ->
+                                                                                       {fail, Reason}
+                                                                               end, []}}
+                                                                ],
+                                                 database => "test",
+                                                 user => "test",
+                                                 password => "password"}),
 
     Config;
 init_per_group(domain_socket, Config) ->
     application:ensure_all_started(pgo),
 
-    {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
-                                             port => 5432,
-                                             host => "/tmp/postgresql",
-                                             database => "test",
-                                             user => "test",
-                                             password => "password"}),
+    {ok, _} = pgo_sup:start_child(pgo_default, #{pool_size => 1,
+                                                 port => 5432,
+                                                 host => "/tmp/postgresql",
+                                                 database => "test",
+                                                 user => "test",
+                                                 password => "password"}),
 
     Config.
 
 
 end_per_group(Group, _Config) when Group =:= ssl ; Group =:= domain_socket ->
     application:stop(pgo),
-    pgo_test_utils:clear_types(default),
+    pgo_test_utils:clear_types(pgo_default),
     ok;
 end_per_group(_, _Config) ->
     pgo:query("drop table tmp"),
@@ -94,7 +94,7 @@ end_per_group(_, _Config) ->
 
     application:stop(pgo),
 
-    pgo_test_utils:clear_types(default),
+    pgo_test_utils:clear_types(pgo_default),
 
     ok.
 
@@ -281,6 +281,8 @@ types(_Config) ->
                                                   [10, 42, 1099511627776, <<"And in the end, the love you take is equal to the love you make">>, ?BIN_UUID, <<"deadbeef">>, 3.1415])),
 
 
+    ?assertMatch(#{command := insert}, pgo:query("insert into types (id, an_integer, a_bigint, a_text, a_uuid, a_bytea, a_real) values ($1, $2, $3, $4, $5, $6, $7)", [101, null, null, null, null, "deadbeef", null])),
+
     R = pgo:query("select * from types where id = 10"),
     ?assertMatch(#{command := select, rows := [_Row]}, R),
     #{command := select, rows := [Row]} = R,
@@ -423,7 +425,8 @@ bit_string(_Config) ->
     ?assertMatch(#{rows := [{<<1:1,1:1,0:1>>}]}, pgo:query("SELECT bit '110' :: varbit", [])).
 
 arrays(_Config) ->
-    ?assertMatch(#{rows := [{[<<"s1">>,null]}]}, pgo:query("SELECT $1::text[]", [[<<"s1">>, null]])).
+    ?assertMatch(#{rows := [{[<<"s1">>,null]}]}, pgo:query("SELECT $1::text[]", [[<<"s1">>, null]])),
+    ?assertMatch(#{rows := [{[{array,[{array,[<<"s1">>,null]}]}]}]}, pgo:query("SELECT $1::text[][][]", [[{array, [{array, [<<"s1">>, null]}]}]])).
 
 tsvector(_Config) ->
     ?assertMatch(#{rows := [{[{<<"fat">>,[{2,null}]},{<<"rat">>,[{3,null}]}]}]},
@@ -440,7 +443,7 @@ tsvector(_Config) ->
                                                     {<<"fat">>,[{2,'B'},{4,'C'}]}]])).
 
 query_arity_4(_Config) ->
-    {ok, Ref, Conn} = pgo:checkout(default),
+    {ok, Ref, Conn} = pgo:checkout(pgo_default),
 
     ?assertMatch(#{rows := [{1}]}, pgo:query("select 1", [], #{}, Conn)),
 

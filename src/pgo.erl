@@ -98,7 +98,7 @@ query(Query, Params) ->
 query(Query, Params, Options) ->
     case get(pgo_transaction_connection) of
         undefined ->
-            Pool = maps:get(pool, Options, default),
+            Pool = maps:get(pool, Options, pgo_default),
             PoolOptions = maps:get(pool_options, Options, []),
             case checkout(Pool, PoolOptions) of
                 {ok, Ref, Conn} ->
@@ -149,7 +149,7 @@ transaction(Fun) ->
 %% @equiv transaction(default, Fun, Options)
 -spec transaction(fun(() -> any()), options()) -> any() | {error, any()}.
 transaction(Fun, Options) when is_function(Fun) ->
-    Pool = maps:get(pool, Options, default),
+    Pool = maps:get(pool, Options, pgo_default),
     transaction(Pool, Fun, Options).
 
 %% @doc Runs a function, passing it a connection, in a SQL transaction.
@@ -234,3 +234,4 @@ format_error(Error=#{module := Module}) ->
     Module:format_error(Error);
 format_error(Error) ->
     io_lib:format("Unknown error: ~p", [Error]).
+

@@ -26,7 +26,7 @@ init_per_group(erl_datetime, Config) ->
 
     {ok, _} = application:ensure_all_started(pgo),
 
-    {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
+    {ok, _} = pgo_sup:start_child(pgo_default, #{pool_size => 1,
                                                    database => "test",
                                                    user => "test",
                                                    password => "password"}),
@@ -37,7 +37,7 @@ init_per_group(as_micro, Config) ->
 
     application:ensure_all_started(pgo),
 
-    {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
+    {ok, _} = pgo_sup:start_child(pgo_default, #{pool_size => 1,
                                              database => "test",
                                              user => "test",
                                              password => "password"}),
@@ -48,10 +48,10 @@ init_per_group(as_integer, Config) ->
 
     application:ensure_all_started(pgo),
 
-    {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
-                                             database => "test",
-                                             user => "test",
-                                             password => "password"}),
+    {ok, _} = pgo_sup:start_child(pgo_default, #{pool_size => 1,
+                                                 database => "test",
+                                                 user => "test",
+                                                 password => "password"}),
     Config;
 init_per_group(as_float, Config) ->
     application:load(pg_types),
@@ -59,10 +59,10 @@ init_per_group(as_float, Config) ->
 
     application:ensure_all_started(pgo),
 
-    {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
-                                             database => "test",
-                                             user => "test",
-                                             password => "password"}),
+    {ok, _} = pgo_sup:start_child(pgo_default, #{pool_size => 1,
+                                                 database => "test",
+                                                 user => "test",
+                                                 password => "password"}),
     Config.
 
 end_per_group(_, _Config) ->
@@ -70,7 +70,7 @@ end_per_group(_, _Config) ->
     application:stop(pgo),
     application:unload(pg_types),
 
-    pgo_test_utils:clear_types(default),
+    pgo_test_utils:clear_types(pgo_default),
 
     ok.
 
