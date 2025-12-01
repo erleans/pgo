@@ -40,6 +40,8 @@ tid(Pool) ->
     gen_server:call(Pool, tid).
 -endif.
 
+start_link(default, PoolConfig) ->
+    start_link(pgo_default, PoolConfig);
 start_link(Pool, PoolConfig) ->
     PoolConfig1 = normalize_pool_config(PoolConfig),
     gen_server:start_link({local, Pool}, ?MODULE, {Pool, PoolConfig1}, []).
