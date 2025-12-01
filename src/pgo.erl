@@ -80,6 +80,8 @@
 
 %% @doc Starts connection pool as a child of pgo_sup.
 -spec start_pool(pool(), pool_config()) -> {ok, pid()}.
+start_pool(default, PoolConfig) ->
+    start_pool(pgo_default, PoolConfig);
 start_pool(Name, PoolConfig) ->
     pgo_sup:start_child(Name, PoolConfig).
 
@@ -98,7 +100,7 @@ query(Query, Params) ->
 query(Query, Params, Options) ->
     case get(pgo_transaction_connection) of
         undefined ->
-            Pool = maps:get(pool, Options, default),
+            Pool = pool_or_default(Options),
             PoolOptions = maps:get(pool_options, Options, []),
             case checkout(Pool, PoolOptions) of
                 {ok, Ref, Conn} ->
@@ -149,7 +151,7 @@ transaction(Fun) ->
 %% @equiv transaction(default, Fun, Options)
 -spec transaction(fun(() -> any()), options()) -> any() | {error, any()}.
 transaction(Fun, Options) when is_function(Fun) ->
-    Pool = maps:get(pool, Options, default),
+    Pool = pool_or_default(Options),
     transaction(Pool, Fun, Options).
 
 %% @doc Runs a function, passing it a connection, in a SQL transaction.
@@ -213,10 +215,14 @@ with_conn(Conn, Fun) ->
 
 %% @doc Returns a connection from the pool.
 -spec checkout(atom()) -> {ok, pgo_pool:pool_ref(), pgo_pool:conn()} | {error, any()}.
+checkout(default) ->
+    checkout(pgo_default);
 checkout(Pool) ->
     pgo_pool:checkout(Pool, []).
 
 -spec checkout(atom(), [pool_option()]) -> {ok, pgo_pool:pool_ref(), pgo_pool:conn()} | {error, any()}.
+checkout(default, Options) ->
+    checkout(pgo_default, Options);
 checkout(Pool, Options) ->
     pgo_pool:checkout(Pool, Options).
 
@@ -234,3 +240,11 @@ format_error(Error=#{module := Module}) ->
     Module:format_error(Error);
 format_error(Error) ->
     io_lib:format("Unknown error: ~p", [Error]).
+
+pool_or_default(Options) ->
+    case maps:get(pool, Options, pgo_default) of
+        default ->
+            pgo_default;
+        Other ->
+            Other
+    end.
