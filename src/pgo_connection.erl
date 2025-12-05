@@ -176,7 +176,7 @@ handle_event(info, {'EXIT', _, _Reason}, _Data) ->
 handle_event(info, {ssl_closed, _}, _Data) ->
     keep_state_and_data.
 
-%% @private
+-doc hidden.
 terminate(_Reason, _, #data{conn=undefined}) ->
     ok;
 terminate(_Reason, _, #data{conn=Conn}) ->

@@ -85,9 +85,9 @@ close(#conn{socket=Socket}) ->
     unlink(Socket),
     exit(Socket, shutdown).
 
-%%--------------------------------------------------------------------
-%% @doc Actually open (or re-open) the connection.
-%%
+-doc """
+Actually open (or re-open) the connection.
+""".
 -spec open(atom(), pgo:pool_config()) -> {ok, pgo_pool:conn()} | {error, any()}.
 open(Pool, PoolConfig) ->
     Host = maps:get(host, PoolConfig, ?DEFAULT_HOST),
@@ -128,9 +128,9 @@ open(Pool, PoolConfig) ->
             ConnectError
     end.
 
-%%--------------------------------------------------------------------
-%% @doc Setup the connection, handling the authentication handshake.
-%%
+-doc """
+Setup the connection, handling the authentication handshake.
+""".
 setup(Conn, Options) ->
     case maps:get(ssl, Options, undefined) of
         false ->
