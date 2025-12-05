@@ -7,7 +7,8 @@
          extended_query/5,
          ping/1,
          simple_query/2,
-         close/1]).
+         close/1,
+         process_active_data/3]).
 
 -include("pgo_internal.hrl").
 
@@ -328,6 +329,52 @@ setup_finish(Conn=#conn{socket_module=SocketModule,
             ReceiveError
     end.
 
+
+process_active_data(<<Code:8/integer, Size:32/integer, Tail/binary>>, Conn=#conn{socket=Socket,
+                                                                                 socket_module=SocketModule}, NotificationCallback) ->
+    TailSize = byte_size(Tail),
+    Payload = Size - 4,
+    DecodeT = case Payload of
+                  0 ->
+                      {pgo_protocol:decode_message(Code, <<>>, Conn, []), Tail};
+                  _ when Payload =< TailSize ->
+                      {PayloadBin, Rest0} = split_binary(Tail, Payload),
+                      {pgo_protocol:decode_message(Code, PayloadBin, Conn, []), Rest0};
+                  _ when Payload > TailSize ->
+                      case SocketModule:recv(Socket, Payload - TailSize) of
+                          {ok, Missing} ->
+                              {pgo_protocol:decode_message(Code, list_to_binary([Tail, Missing]), Conn, []), <<>>};
+                          {error, _} = ErrorRecvPacket ->
+                              {ErrorRecvPacket, <<>>}
+                      end
+              end,
+    case DecodeT of
+        {{ok, #notification_response{} = Notification}, Rest} ->
+            NotificationCallback(Notification),
+            process_active_data(Rest, Conn, NotificationCallback);
+        {{ok, #notice_response{} = _Notice}, Rest} ->
+            process_active_data(Rest, Conn, NotificationCallback);
+        {{ok, #parameter_status{name = _Name, value = _Value}}, Rest} ->
+            process_active_data(Rest, Conn, NotificationCallback);
+        {{ok, _Message}, Rest} ->
+            process_active_data(Rest, Conn, NotificationCallback);
+        {{error, _} = _Error, _Rest} ->
+            SocketModule:close(Socket),
+            #conn{socket = closed}
+    end;
+process_active_data(<<>>, Conn, _) -> Conn;
+process_active_data(PartialHeader, Conn=#conn{socket=Socket,
+                                              socket_module=SocketModule}, NotificationCallback) ->
+    PartialHeaderSize = byte_size(PartialHeader),
+    case SocketModule:recv(Socket, ?MESSAGE_HEADER_SIZE - PartialHeaderSize) of
+        {ok, Rest} ->
+            process_active_data(list_to_binary([PartialHeader, Rest]), Conn, NotificationCallback);
+        {error, _} = _Error ->
+            SocketModule:close(Socket),
+            #conn{socket=closed}
+    end.
+
+
 % This function should always return true as set or reset may only fail because
 % we are within a failed transaction.
 % If set failed because the transaction was aborted, the query will fail
@@ -343,6 +390,7 @@ setup_finish(Conn=#conn{socket_module=SocketModule,
 extended_query(Conn=#conn{socket=Socket,
                           socket_module=SocketModule,
                           pool=Pool}, Query, Parameters, DecodeOptions, PerRowFun, Acc0) ->
+    _ = inet:setopts(Socket, [{active, false}]),
     put(query, Query),
     ParseMessage = pgo_protocol:encode_parse_message("", Query, []),
     %% We ask for a description of parameters only if required.
@@ -361,7 +409,7 @@ extended_query(Conn=#conn{socket=Socket,
                       {ok, [ParseMessage, DescribeStatementMessage, FlushMessage], LoopState0}
 
               end,
-    case PacketT of
+    Result = case PacketT of
         {ok, SinglePacket, LoopState} ->
             case SocketModule:send(Socket, SinglePacket) of
                 ok ->
@@ -382,7 +430,11 @@ extended_query(Conn=#conn{socket=Socket,
             end;
         {_, _} ->
             PacketT
-    end.
+    end,
+
+    _ = inet:setopts(Socket, [{active, once}]),
+
+    Result.
 
 -spec encode_bind_describe_execute(pgo_pool:conn(), [any()], [oid()]) -> {ok, iodata()} | {term(), any()}.
 encode_bind_describe_execute(Conn, Parameters, ParameterDataTypes) ->
@@ -515,6 +567,7 @@ flush_until_ready_for_query(Result, Conn=#conn{socket=Socket,
         {ok, #parameter_status{name = _Name, value = _Value}} ->
             flush_until_ready_for_query(Result, Conn);
         {ok, #ready_for_query{}} ->
+            _ = inet:setopts(Socket, [{active, once}]),
             Result;
         {ok, _OtherMessage} ->
             flush_until_ready_for_query(Result, Conn);
