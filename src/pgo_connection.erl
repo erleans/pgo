@@ -166,6 +166,11 @@ handle_event({call, From}, reload_types, #data{sup=Sup}) ->
     TypeServer = pgo_pool_sup:whereis_child(Sup, type_server),
     pgo_type_server:reload(TypeServer),
     {keep_state_and_data, [{reply, From, ok}]};
+handle_event(info, {Tag, Socket, Binary}, Data=#data{conn=Conn=#conn{socket=Socket,
+                                                                     socket_module=SocketModule}}) when Tag =:= tcp orelse Tag =:= ssl ->
+    Conn = pgo_handler:process_active_data(Binary, Conn, fun(_) -> ok end),
+    _ = pgo_handler:setopts(SocketModule, Socket, [{active, once}]),
+    {keep_state, Data#data{conn=Conn}};
 handle_event(info, {'EXIT', Socket, _Reason}, Data=#data{conn=#conn{socket=Socket}}) ->
     %% socket died, go to disconnected state
     close_and_reopen(Data);
@@ -200,3 +205,4 @@ report_cb(#{at := connecting,
 report_cb(#{at := connecting,
             reason := Reason}) ->
     {"unknown error when connecting to database: ~p", [Reason]}.
+
