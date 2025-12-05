@@ -1,18 +1,18 @@
 %%% Module from epgsql https://github.com/epgsql/epgsql
 
 %%% coding: utf-8
-%%% @doc
-%%% SCRAM--SHA-256 helper functions
-%%%
-%%% <ul>
-%%%  <li>[https://www.postgresql.org/docs/current/static/sasl-authentication.html]</li>
-%%%  <li>[https://en.wikipedia.org/wiki/Salted_Challenge_Response_Authentication_Mechanism]</li>
-%%%  <li>[https://tools.ietf.org/html/rfc7677]</li>
-%%%  <li>[https://tools.ietf.org/html/rfc5802]</li>
-%%% </ul>
-%%% @end
 
 -module(pgo_scram).
+-moduledoc """
+SCRAM--SHA-256 helper functions
+
+<ul>
+ <li>[https://www.postgresql.org/docs/current/static/sasl-authentication.html]</li>
+ <li>[https://en.wikipedia.org/wiki/Salted_Challenge_Response_Authentication_Mechanism]</li>
+ <li>[https://tools.ietf.org/html/rfc7677]</li>
+ <li>[https://tools.ietf.org/html/rfc5802]</li>
+</ul>
+""".
 -export([get_nonce/1,
          get_client_first/2,
          get_client_final/4,
@@ -39,9 +39,11 @@ get_client_first(UserName, Nonce) ->
 client_first_bare(UserName, Nonce) ->
     [<<"n=">>, UserName, <<",r=">>, Nonce].
 
-%% @doc Generate unique ASCII string.
-%% Resulting string length isn't guaranteed, but it's guaranteed to be unique and will
-%% contain `NumRandomBytes' of random data.
+-doc """
+Generate unique ASCII string.
+Resulting string length isn't guaranteed, but it's guaranteed to be unique and will
+contain `NumRandomBytes` of random data.
+""".
 -spec get_nonce(pos_integer()) -> nonce().
 get_nonce(NumRandomBytes) when NumRandomBytes < 255 ->
     Random = crypto:strong_rand_bytes(NumRandomBytes),

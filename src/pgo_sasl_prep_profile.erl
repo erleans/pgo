@@ -68,8 +68,10 @@ is_non_ascii_control_character(C) ->
         orelse (16#FFF9 =< C andalso C =< 16#FFFC)
         orelse (16#1D173 =< C andalso C =< 16#1D17A).
 
-%% @doc Return true if the given character is a private use character
-%% as defined by https://tools.ietf.org/html/rfc3454#appendix-C.3
+-doc """
+Return true if the given character is a private use character
+as defined by https://tools.ietf.org/html/rfc3454#appendix-C.3
+""".
 -spec is_private_use_characters(char()) -> boolean().
 is_private_use_characters(C) ->
     (16#E000 =< C andalso C =< 16#F8FF)
@@ -141,8 +143,10 @@ is_change_display_properties_or_deprecated_char(C) ->
         orelse C == 16#206E
         orelse C == 16#206F.
 
-%% @doc Return true if the given character is a tagging character as defined by
-%% https://tools.ietf.org/html/rfc3454#appendix-C.9
+-doc """
+Return true if the given character is a tagging character as defined by
+https://tools.ietf.org/html/rfc3454#appendix-C.9
+""".
 -spec is_tagging_char(char()) -> boolean().
 is_tagging_char(C) ->
     C == 16#E0001 orelse

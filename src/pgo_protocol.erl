@@ -189,9 +189,9 @@ encode_execute_message(PortalName, MaxRows) ->
     MessageLen = iolist_size(PortalName) + 9,
     [<<$E, MessageLen:32/integer>>, PortalName, <<0, MaxRows:32/integer>>].
 
-%%--------------------------------------------------------------------
-%% @doc Encode a sync message.
-%%
+-doc """
+Encode a sync message.
+""".
 -spec encode_sync_message() -> binary().
 encode_sync_message() ->
     <<$S, 4:32/integer>>.
@@ -570,9 +570,9 @@ decode_strings(Binary) ->
     <<Strings:Size/binary, 0>> = Binary,
     binary:split(Strings, <<0>>, [global]).
 
-%%--------------------------------------------------------------------
-%% @doc Decode a row format.
-%%
+-doc """
+Decode a row format.
+""".
 -spec decode_row([#row_description_field{}], [binary()], atom(), proplists:proplist()) -> tuple().
 decode_row(Descs, Values, OIDMap, DecodeOptions) ->
     case proplists:get_bool(return_rows_as_maps, DecodeOptions) of

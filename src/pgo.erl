@@ -1,13 +1,10 @@
-%%% ---------------------------------------------------------------------------
-%%% @author Tristan Sloughter <t@crashfast.com>
-%%%
-%%% @doc Postgres driver and pool for Erlang.
-%%%
-%%% This module provides functions for interacting with a pool and
-%%  querying the database.
-%%% @end
-%%% ---------------------------------------------------------------------------
 -module(pgo).
+-author("Tristan Sloughter <tristan@sloughter.dev>").
+-moduledoc """
+Postgres driver and pool for Erlang.
+This module provides functions for interacting with a pool and
+ querying the database.
+""".
 
 -export([start_pool/2,
          query/1,
@@ -88,7 +85,7 @@ start_pool(Name, PoolConfig) ->
 query(Query) ->
     query(Query, [], #{}).
 
-%% @equiv query(Query, Params, #{})
+-doc #{equiv => query(Query, Params, #{})}.
 -spec query(iodata(), list()) -> result().
 query(Query, Params) ->
     query(Query, Params, #{}).
@@ -211,7 +208,9 @@ with_conn(Conn, Fun) ->
             end
     end.
 
-%% @doc Returns a connection from the pool.
+-doc """
+Returns a connection from the pool.
+""".
 -spec checkout(atom()) -> {ok, pgo_pool:pool_ref(), pgo_pool:conn()} | {error, any()}.
 checkout(Pool) ->
     pgo_pool:checkout(Pool, []).
