@@ -127,6 +127,8 @@ enqueued(EventType, EventContent, Data) ->
 dequeued(EventType, EventContent, Data) ->
     handle_event(EventType, EventContent, Data).
 
+handle_event(cast, {set_parameter, Name, Value}, Data=#data{conn=Conn=#conn{parameters=Parameters}}) ->
+    {keep_state, Data#data{conn=Conn#conn{parameters=Parameters#{Name => Value}}}};
 handle_event(cast, {ping, Holder}, Data=#data{pool=Pool,
                                               holder=Holder,
                                               queue=QueueTid,

@@ -309,12 +309,14 @@ setup_authenticate_password(Conn=#conn{socket_module=SocketModule,
         {error, _} = SendError -> SendError
     end.
 
-setup_finish(Conn=#conn{socket_module=SocketModule,
+setup_finish(Conn=#conn{owner=Pid,
+                        socket_module=SocketModule,
                         socket=Socket,
                         pool=Pool,
                         parameters=Parameters}) ->
     case receive_message(SocketModule, Socket, Pool, []) of
         {ok, #parameter_status{name=Name, value=Value}} ->
+            gen_statem:cast(Pid, {set_parameter, Name, Value}),
             setup_finish(Conn#conn{parameters=Parameters#{Name => Value}});
         {ok, #backend_key_data{procid = _ProcID, secret = _Secret}} ->
             setup_finish(Conn);
@@ -332,7 +334,9 @@ setup_finish(Conn=#conn{socket_module=SocketModule,
 
 
 process_active_data(<<Code:8/integer, Size:32/integer, Tail/binary>>, Conn=#conn{socket=Socket,
-                                                                                 socket_module=SocketModule}, NotificationCallback) ->
+                                                                                 socket_module=SocketModule,
+                                                                                 parameters=Parameters},
+                    NotificationCallback) ->
     TailSize = byte_size(Tail),
     Payload = Size - 4,
     DecodeT = case Payload of
@@ -355,8 +359,8 @@ process_active_data(<<Code:8/integer, Size:32/integer, Tail/binary>>, Conn=#conn
             process_active_data(Rest, Conn, NotificationCallback);
         {{ok, #notice_response{} = _Notice}, Rest} ->
             process_active_data(Rest, Conn, NotificationCallback);
-        {{ok, #parameter_status{name = _Name, value = _Value}}, Rest} ->
-            process_active_data(Rest, Conn, NotificationCallback);
+        {{ok, #parameter_status{name=Name, value=Value}}, Rest} ->
+            process_active_data(Rest, Conn#conn{parameters=Parameters#{Name => Value}}, NotificationCallback);
         {{ok, _Message}, Rest} ->
             process_active_data(Rest, Conn, NotificationCallback);
         {{error, _} = _Error, _Rest} ->
@@ -472,9 +476,12 @@ receive_loop(LoopState, DecodeFun, Acc0, DecodeOptions, Conn=#conn{socket=Socket
             ReceiveError
     end.
 
-receive_loop0(#parameter_status{name=_Name, value=_Value}, LoopState, DecodeFun, Acc0, DecodeOptions, Conn) ->
-    %% State1 = handle_parameter(Name, Value, Conn),
-    receive_loop(LoopState, DecodeFun, Acc0, DecodeOptions, Conn);
+receive_loop0(#parameter_status{name=Name, value=Value}, LoopState, DecodeFun, Acc0, DecodeOptions, Conn=#conn{owner=Pid, parameters=Parameters}) ->
+    %% need to send these to the process handling the connection so they aren't lost
+    %% as only the result, not the updated connection is returned to the user's call
+    %% to `query`
+    gen_statem:cast(Pid, {set_parameter, Name, Value}),
+    receive_loop(LoopState, DecodeFun, Acc0, DecodeOptions, Conn#conn{parameters=Parameters#{Name => Value}});
 receive_loop0(#parse_complete{}, parse_complete, DecodeFun, Acc0, DecodeOptions, Conn) ->
     receive_loop(bind_complete, DecodeFun, Acc0, DecodeOptions, Conn);
 
@@ -569,11 +576,14 @@ receive_loop0(Message, _LoopState, _Fun, _Acc0, _DecodeOptions, Conn=#conn{socke
     Error = {error, {unexpected_message, Message}},
     flush_until_ready_for_query(Error, Conn).
 
-flush_until_ready_for_query(Result, Conn=#conn{socket=Socket,
-                                               socket_module=SocketModule}) ->
+flush_until_ready_for_query(Result, Conn=#conn{owner=Pid,
+                                               socket=Socket,
+                                               socket_module=SocketModule,
+                                               parameters=Parameters}) ->
     case receive_message(SocketModule, Socket, Conn, []) of
-        {ok, #parameter_status{name = _Name, value = _Value}} ->
-            flush_until_ready_for_query(Result, Conn);
+        {ok, #parameter_status{name=Name, value=Value}} ->
+            gen_statem:cast(Pid, {set_parameter, Name, Value}),
+            flush_until_ready_for_query(Result, Conn#conn{parameters=Parameters#{Name => Value}});
         {ok, #ready_for_query{}} ->
             _ = inet:setopts(Socket, [{active, once}]),
             Result;

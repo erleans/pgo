@@ -133,6 +133,8 @@ connected({call, {Pid, _}=From}, {listen, Channel}, Data=#data{conn=Conn,
 connected(EventType, EventContent, Data) ->
     handle_event(EventType, EventContent, Data).
 
+handle_event(cast, {set_parameter, Name, Value}, Data=#data{conn=Conn=#conn{parameters=Parameters}}) ->
+    {keep_state, Data#data{conn=Conn#conn{parameters=Parameters#{Name => Value}}}};
 handle_event({call, From}, {unlisten, Ref}, Data=#data{conn=Conn,
                                                        listeners=Listeners,
                                                        listener_channels=ListenerChannels}) ->
