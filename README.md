@@ -162,6 +162,17 @@ it must be included as a `rebar3` dependency and runtime dependency (listed in
 your application's `.app.src` `applications` or the list of applications for
 `relx` to include in a release).
 
+### Listen/Notify
+
+Use `pgo_notifications:start_link` to create a process holding a connection to
+the database that you can call `pgo_notifications:listen/2` with to listen on a
+channel for notifications. Those notifications will arrive at the calling
+process in the form:
+
+```
+{notification, Pid, Ref, Channel, Payload}
+```
+
 ## Running Tests
 
 Pool functionality is tested with common test suites:
