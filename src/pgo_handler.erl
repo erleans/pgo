@@ -6,8 +6,10 @@
          extended_query/4,
          extended_query/5,
          ping/1,
+         setopts/3,
          simple_query/2,
-         close/1]).
+         close/1,
+         process_active_data/3]).
 
 -include("pgo_internal.hrl").
 
@@ -164,9 +166,9 @@ setup_ssl(Conn=#conn{socket=Socket}, Options) ->
     end.
 
 setup_startup(Conn=#conn{socket_module=SocketModule,
-                        socket=Socket,
-                        pool=Pool}, Options) ->
-    % Send startup packet connection packet.
+                         socket=Socket,
+                         pool=Pool}, Options) ->
+    %% Send startup packet connection packet.
     User = maps:get(user, Options, ?DEFAULT_USER),
     Database = maps:get(database, Options, User),
     ConnectionParams = maps:get(connection_parameters, Options, []),
@@ -307,12 +309,14 @@ setup_authenticate_password(Conn=#conn{socket_module=SocketModule,
         {error, _} = SendError -> SendError
     end.
 
-setup_finish(Conn=#conn{socket_module=SocketModule,
+setup_finish(Conn=#conn{owner=Pid,
+                        socket_module=SocketModule,
                         socket=Socket,
                         pool=Pool,
                         parameters=Parameters}) ->
     case receive_message(SocketModule, Socket, Pool, []) of
         {ok, #parameter_status{name=Name, value=Value}} ->
+            gen_statem:cast(Pid, {set_parameter, Name, Value}),
             setup_finish(Conn#conn{parameters=Parameters#{Name => Value}});
         {ok, #backend_key_data{procid = _ProcID, secret = _Secret}} ->
             setup_finish(Conn);
@@ -327,6 +331,54 @@ setup_finish(Conn=#conn{socket_module=SocketModule,
         {error, _} = ReceiveError ->
             ReceiveError
     end.
+
+
+process_active_data(<<Code:8/integer, Size:32/integer, Tail/binary>>, Conn=#conn{socket=Socket,
+                                                                                 socket_module=SocketModule,
+                                                                                 parameters=Parameters},
+                    NotificationCallback) ->
+    TailSize = byte_size(Tail),
+    Payload = Size - 4,
+    DecodeT = case Payload of
+                  0 ->
+                      {pgo_protocol:decode_message(Code, <<>>, Conn, []), Tail};
+                  _ when Payload =< TailSize ->
+                      {PayloadBin, Rest0} = split_binary(Tail, Payload),
+                      {pgo_protocol:decode_message(Code, PayloadBin, Conn, []), Rest0};
+                  _ when Payload > TailSize ->
+                      case SocketModule:recv(Socket, Payload - TailSize) of
+                          {ok, Missing} ->
+                              {pgo_protocol:decode_message(Code, list_to_binary([Tail, Missing]), Conn, []), <<>>};
+                          {error, _} = ErrorRecvPacket ->
+                              {ErrorRecvPacket, <<>>}
+                      end
+              end,
+    case DecodeT of
+        {{ok, #notification_response{} = Notification}, Rest} ->
+            NotificationCallback(Notification),
+            process_active_data(Rest, Conn, NotificationCallback);
+        {{ok, #notice_response{} = _Notice}, Rest} ->
+            process_active_data(Rest, Conn, NotificationCallback);
+        {{ok, #parameter_status{name=Name, value=Value}}, Rest} ->
+            process_active_data(Rest, Conn#conn{parameters=Parameters#{Name => Value}}, NotificationCallback);
+        {{ok, _Message}, Rest} ->
+            process_active_data(Rest, Conn, NotificationCallback);
+        {{error, _} = _Error, _Rest} ->
+            SocketModule:close(Socket),
+            Conn#conn{socket = closed}
+    end;
+process_active_data(<<>>, Conn, _) -> Conn;
+process_active_data(PartialHeader, Conn=#conn{socket=Socket,
+                                              socket_module=SocketModule}, NotificationCallback) ->
+    PartialHeaderSize = byte_size(PartialHeader),
+    case SocketModule:recv(Socket, ?MESSAGE_HEADER_SIZE - PartialHeaderSize) of
+        {ok, Rest} ->
+            process_active_data(list_to_binary([PartialHeader, Rest]), Conn, NotificationCallback);
+        {error, _} = _Error ->
+            SocketModule:close(Socket),
+            Conn#conn{socket=closed}
+    end.
+
 
 % This function should always return true as set or reset may only fail because
 % we are within a failed transaction.
@@ -343,6 +395,7 @@ setup_finish(Conn=#conn{socket_module=SocketModule,
 extended_query(Conn=#conn{socket=Socket,
                           socket_module=SocketModule,
                           pool=Pool}, Query, Parameters, DecodeOptions, PerRowFun, Acc0) ->
+    _ = setopts(SocketModule, Socket, [{active, false}]),
     put(query, Query),
     ParseMessage = pgo_protocol:encode_parse_message("", Query, []),
     %% We ask for a description of parameters only if required.
@@ -361,7 +414,7 @@ extended_query(Conn=#conn{socket=Socket,
                       {ok, [ParseMessage, DescribeStatementMessage, FlushMessage], LoopState0}
 
               end,
-    case PacketT of
+    Result = case PacketT of
         {ok, SinglePacket, LoopState} ->
             case SocketModule:send(Socket, SinglePacket) of
                 ok ->
@@ -382,7 +435,18 @@ extended_query(Conn=#conn{socket=Socket,
             end;
         {_, _} ->
             PacketT
-    end.
+    end,
+
+    _ = setopts(SocketModule, Socket, [{active, once}]),
+
+    Result.
+
+setopts(_, closed, _) ->
+    ok;
+setopts(gen_tcp, Socket, Options) ->
+    _ = inet:setopts(Socket, Options);
+setopts(ssl, Socket, Options) ->
+    _ = ssl:setopts(Socket, Options).
 
 -spec encode_bind_describe_execute(pgo_pool:conn(), [any()], [oid()]) -> {ok, iodata()} | {term(), any()}.
 encode_bind_describe_execute(Conn, Parameters, ParameterDataTypes) ->
@@ -412,9 +476,12 @@ receive_loop(LoopState, DecodeFun, Acc0, DecodeOptions, Conn=#conn{socket=Socket
             ReceiveError
     end.
 
-receive_loop0(#parameter_status{name=_Name, value=_Value}, LoopState, DecodeFun, Acc0, DecodeOptions, Conn) ->
-    %% State1 = handle_parameter(Name, Value, Conn),
-    receive_loop(LoopState, DecodeFun, Acc0, DecodeOptions, Conn);
+receive_loop0(#parameter_status{name=Name, value=Value}, LoopState, DecodeFun, Acc0, DecodeOptions, Conn=#conn{owner=Pid, parameters=Parameters}) ->
+    %% need to send these to the process handling the connection so they aren't lost
+    %% as only the result, not the updated connection is returned to the user's call
+    %% to `query`
+    gen_statem:cast(Pid, {set_parameter, Name, Value}),
+    receive_loop(LoopState, DecodeFun, Acc0, DecodeOptions, Conn#conn{parameters=Parameters#{Name => Value}});
 receive_loop0(#parse_complete{}, parse_complete, DecodeFun, Acc0, DecodeOptions, Conn) ->
     receive_loop(bind_complete, DecodeFun, Acc0, DecodeOptions, Conn);
 
@@ -509,12 +576,16 @@ receive_loop0(Message, _LoopState, _Fun, _Acc0, _DecodeOptions, Conn=#conn{socke
     Error = {error, {unexpected_message, Message}},
     flush_until_ready_for_query(Error, Conn).
 
-flush_until_ready_for_query(Result, Conn=#conn{socket=Socket,
-                                               socket_module=SocketModule}) ->
+flush_until_ready_for_query(Result, Conn=#conn{owner=Pid,
+                                               socket=Socket,
+                                               socket_module=SocketModule,
+                                               parameters=Parameters}) ->
     case receive_message(SocketModule, Socket, Conn, []) of
-        {ok, #parameter_status{name = _Name, value = _Value}} ->
-            flush_until_ready_for_query(Result, Conn);
+        {ok, #parameter_status{name=Name, value=Value}} ->
+            gen_statem:cast(Pid, {set_parameter, Name, Value}),
+            flush_until_ready_for_query(Result, Conn#conn{parameters=Parameters#{Name => Value}});
         {ok, #ready_for_query{}} ->
+            _ = inet:setopts(Socket, [{active, once}]),
             Result;
         {ok, _OtherMessage} ->
             flush_until_ready_for_query(Result, Conn);

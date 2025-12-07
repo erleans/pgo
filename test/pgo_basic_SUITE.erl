@@ -4,6 +4,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
+-include("pgo_internal.hrl").
 
 -define(UUID, <<"727f42a6-e6a0-4223-9b72-6a5eb7436ab5">>).
 -define(BIN_UUID, <<114,127,66,166,230,160,66,35,155,114,106,94,183,67,106,181>>).
@@ -23,7 +24,7 @@ cases() ->
      int4_range, ts_range, tstz_range, numerics,
      hstore, records, circle, path, polygon, line,
      line_segment, tid, bit_string, arrays, tsvector,
-     query_arity_4].
+     query_arity_4, set_parameter].
 
 init_per_suite(Config) ->
     application:load(pg_types),
@@ -95,6 +96,17 @@ end_per_group(_, _Config) ->
     application:stop(pgo),
 
     pgo_test_utils:clear_types(default),
+
+    ok.
+
+set_parameter(_Config) ->
+    ?assertMatch(#{command := set}, pgo:query("SET application_name = 'testset'")),
+    ?assertMatch(#{command := select,
+                   rows := [{<<"testset">>}]}, pgo:query("SELECT current_setting('application_name')")),
+
+    %% TODO: this should effect parameters in the connection somehow
+    %% they are sent by postgres and decoded to update the parameters store don the
+    %% conn but a copy of that is in the pool and it isn't updated when this happens
 
     ok.
 
