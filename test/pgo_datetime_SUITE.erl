@@ -68,6 +68,7 @@ init_per_group(as_float, Config) ->
 end_per_group(_, _Config) ->
     application:unset_env(pg_types, timestamp_config),
     application:stop(pgo),
+    application:stop(pg_types),
     application:unload(pg_types),
 
     pgo_test_utils:clear_types(default),
