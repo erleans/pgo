@@ -14,9 +14,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        otp_version: ['25', '26', '27']
-        rebar3_version: ['3.23']
-        os: [ubuntu-22.04]
+        otp_version: ['26', '27', '28']
+        rebar3_version: ['3.25']
+        os: [ubuntu-latest]
     env:
       OTP_VERSION: ${{ matrix.otp_version }}
     steps:
@@ -61,9 +61,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        otp_version: ['27']
-        rebar3_version: ['3.23']
-        os: [ubuntu-22.04]
+        otp_version: ['28']
+        rebar3_version: ['3.25']
+        os: [ubuntu-latest]
     steps:
     - uses: actions/checkout@v4
     - uses: erlef/setup-beam@v1
