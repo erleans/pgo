@@ -24,7 +24,7 @@ cases() ->
      int4_range, ts_range, tstz_range, numerics,
      hstore, records, circle, path, polygon, line,
      line_segment, tid, bit_string, arrays, tsvector,
-     query_arity_4, set_parameter].
+     query_arity_4, set_parameter, netmask].
 
 init_per_suite(Config) ->
     application:load(pg_types),
@@ -358,6 +358,8 @@ numerics(_Config) ->
     ?assertMatch(#{rows := [{1.0e-32}]}, pgo:query(BasicQuery, [<<"1.0e-32">>])),
     ?assertMatch(#{rows := [{1.0e+32}]}, pgo:query(BasicQuery, [<<"1.0e+32">>])),
 
+    ?assertMatch(#{rows := [{infinity}]}, pgo:query(BasicQuery, [infinity])),
+    ?assertMatch(#{rows := [{'-infinity'}]}, pgo:query(BasicQuery, ['-infinity'])),
 
     #{command := create} = pgo:query("create table numeric_tmp (id integer primary key, a_int integer, a_num numeric,
                                       b_num numeric(5,3))"),
@@ -388,12 +390,14 @@ records(_Config) ->
     pgo:query("DROP TABLE IF EXISTS composite1"),
     #{command := create} = pgo:query("CREATE TABLE composite1 (a int, b text)"),
 
-    ?assertMatch(#{rows := [{{null, null}}]}, pgo:query("SELECT (NULL, NULL)", [])),
+    ?assertMatch(#{rows := [{{null, 1}}]}, pgo:query("SELECT (NULL, 1)", [])),
     ?assertMatch(#{rows := [{{1, <<"2">>}}]}, pgo:query("SELECT (1, '2')::composite1", [])),
     ?assertMatch(#{rows := [{[{1, <<"2">>}]}]}, pgo:query("SELECT ARRAY[(1, '2')::composite1]", [])),
 
     ?assertMatch(#{rows := [{{null, <<"2">>}}]},pgo:query("SELECT $1::composite1", [{null, <<"2">>}])),
-    ?assertMatch(#{rows := [{{1, <<"2">>}}]},pgo:query("SELECT $1::composite1", [{1, <<"2">>}])).
+    ?assertMatch(#{rows := [{{1, <<"2">>}}]},pgo:query("SELECT $1::composite1", [{1, <<"2">>}])),
+
+    ok.
 
 circle(_Config) ->
     ?assertMatch(#{rows := [{#{center := #{x := 1.0,
@@ -457,5 +461,11 @@ query_arity_4(_Config) ->
     ?assertMatch(#{rows := [{1}]}, pgo:query("select 1", [], #{}, Conn)),
 
     pgo:checkin(Ref, Conn),
+
+    ok.
+
+netmask(_Config) ->
+    ?assertMatch(#{rows := [{{{192,168,0,1},24}}]},
+                 pgo:query("SELECT '192.168.0.1/24'::inet")),
 
     ok.

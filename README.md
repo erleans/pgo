@@ -16,7 +16,7 @@ PG...Oh god not nother Postgres client in Erlang...
 
 ## Requirements
 
-Erlang/OTP 21.3 and above.
+Erlang/OTP 26 and above.
 
 ## Use
 
