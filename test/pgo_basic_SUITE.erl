@@ -15,7 +15,7 @@ all() ->
 
 groups() ->
     [{clear, [], cases()},
-     {ssl, [], [int4_range]},
+     {ssl, [], [int4_range, exceptions]},
      {domain_socket, [], [int4_range]}].
 
 cases() ->
