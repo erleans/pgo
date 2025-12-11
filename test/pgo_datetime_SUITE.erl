@@ -6,13 +6,14 @@
 -include_lib("stdlib/include/assert.hrl").
 
 all() ->
-    [{group, erl_datetime}, {group, as_integer}, {group, as_float}, {group, as_micro}].
+    [{group, erl_datetime}, {group, as_integer}, {group, as_float}, {group, as_micro}, {group, rfc3339_bin}].
 
 groups() ->
     [{erl_datetime, [], [select, insert, interval, timestamptz]},
      {as_micro, [], [as_micro]},
      {as_integer, [], [as_integer]},
-     {as_float, [], [as_float]}].
+     {as_float, [], [as_float]},
+     {rfc3339_bin, [], [rfc3339_bin]}].
 
 init_per_suite(Config) ->
     Config.
@@ -63,9 +64,21 @@ init_per_group(as_float, Config) ->
                                              database => "test",
                                              user => "test",
                                              password => "password"}),
+    Config;
+init_per_group(rfc3339_bin, Config) ->
+    application:load(pg_types),
+    application:set_env(pg_types, timestamptz_config, rfc3339_bin),
+
+    application:ensure_all_started(pgo),
+
+    {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
+                                             database => "test",
+                                             user => "test",
+                                             password => "password"}),
     Config.
 
 end_per_group(_, _Config) ->
+    application:unset_env(pg_types, timestamptz_config),
     application:unset_env(pg_types, timestamp_config),
     application:stop(pgo),
     application:stop(pg_types),
@@ -185,4 +198,18 @@ timestamptz(_Config) ->
 
     ?assertMatch(#{command := select,
                    rows := [{{{2012,1,17},{15,9,3.45}}}]},
-                pgo:query("select a_timestamp_with_timezone from timestamptz_table")).
+                 pgo:query("select a_timestamp_with_timezone from timestamptz_table")),
+
+    ok.
+
+rfc3339_bin(_Config) ->
+    ?assertMatch(#{command := create},
+                pgo:query("CREATE temporary TABLE rfc3339_bin_test (created_at timestamptz)")),
+
+    ?assertMatch(#{command := insert},
+                 pgo:query("insert into rfc3339_bin_test (created_at) values ($1)", [{{2012,1,17},{10,54,3.45},{-4, 15}}])),
+
+    ?assertMatch(#{rows := [{<<"2012-01-17 10:09:03.450000-05:00">>}]},
+                 pgo:query("select created_at FROM rfc3339_bin_test limit 1;")),
+
+    ok.
