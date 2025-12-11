@@ -585,7 +585,7 @@ flush_until_ready_for_query(Result, Conn=#conn{owner=Pid,
             gen_statem:cast(Pid, {set_parameter, Name, Value}),
             flush_until_ready_for_query(Result, Conn#conn{parameters=Parameters#{Name => Value}});
         {ok, #ready_for_query{}} ->
-            _ = inet:setopts(Socket, [{active, once}]),
+            _ = setopts(SocketModule, Socket, [{active, once}]),
             Result;
         {ok, _OtherMessage} ->
             flush_until_ready_for_query(Result, Conn);
