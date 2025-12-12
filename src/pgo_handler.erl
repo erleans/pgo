@@ -75,6 +75,7 @@ extended_query(Socket, Query, Parameters, DecodeOptions, _Timings) ->
 -spec ping(#conn{}) -> ok | {error, term()}.
 ping(Conn=#conn{socket=Socket,
                 socket_module=SocketModule}) ->
+    _ = setopts(SocketModule, Socket, [{active, false}]),
     SocketModule:send(Socket, pgo_protocol:encode_sync_message()),
     flush_until_ready_for_query(ok, Conn).
 

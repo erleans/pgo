@@ -154,6 +154,11 @@ handle_event(info, {Tag, Socket, Binary}, Data=#data{conn=Conn=#conn{socket=Sock
                                                          end),
     _ = inet:setopts(Socket, [{active, once}]),
     {keep_state, Data#data{conn=Conn}};
+handle_event(info, {Tag, _, _Binary}, _Data) when Tag =:= tcp orelse Tag =:= ssl ->
+    %% ignore message from an old socket
+    %% this can happen for instance if a message gets into the mailbox before the
+    %% connection is closed and reopen
+    keep_state_and_data;
 handle_event(info, {'EXIT', Socket, _Reason}, Data=#data{conn=#conn{socket=Socket}}) ->
     %% socket died, go to disconnected state
     close_and_reopen(Data);
@@ -179,9 +184,6 @@ close_and_reopen(Data=#data{conn=Conn}) ->
     {next_state, disconnected, Data#data{conn=undefined},
      [{next_event, internal, connect}]}.
 
-report_cb(#{at := ping,
-            reason := Reason}) ->
-    {"disconnecting after database failed ping with reason ~p", [Reason]};
 report_cb(#{at := connecting,
             reason := {pgo_error, #{message := Message}}}) ->
     {"error connecting to database: ~s", [Message]};
