@@ -184,9 +184,6 @@ close_and_reopen(Data=#data{conn=Conn}) ->
     {next_state, disconnected, Data#data{conn=undefined},
      [{next_event, internal, connect}]}.
 
-report_cb(#{at := ping,
-            reason := Reason}) ->
-    {"disconnecting after database failed ping with reason ~p", [Reason]};
 report_cb(#{at := connecting,
             reason := {pgo_error, #{message := Message}}}) ->
     {"error connecting to database: ~s", [Message]};
