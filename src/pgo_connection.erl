@@ -18,6 +18,7 @@
          disconnected/3,
          enqueued/3,
          dequeued/3,
+         format_status/1,
          terminate/3]).
 
 -include("pgo_internal.hrl").
@@ -187,6 +188,13 @@ handle_event(info, {'EXIT', _, _Reason}, _Data) ->
 %% nothing to do for `ssl_closed' -- it should be handled by the `EXIT' handling
 handle_event(info, {ssl_closed, _}, _Data) ->
     keep_state_and_data.
+
+format_status(Status) ->
+    maps:map(fun(data, Data=#data{pool_config=PoolConfig}) ->
+                     Data#data{pool_config=PoolConfig#{password => "*"}};
+                (_, Value) ->
+                     Value
+             end, Status).
 
 %% @private
 terminate(_Reason, _, #data{conn=undefined}) ->

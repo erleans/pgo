@@ -12,6 +12,7 @@
          callback_mode/0,
          connected/3,
          disconnected/3,
+         format_status/1,
          terminate/3]).
 
 -include("pgo_internal.hrl").
@@ -170,6 +171,13 @@ handle_event(info, {ssl_closed, _}, _Data) ->
     keep_state_and_data;
 handle_event(_, _, _) ->
     keep_state_and_data.
+
+format_status(Status) ->
+    maps:map(fun(data, Data=#data{config=PoolConfig}) ->
+                     Data#data{config=PoolConfig#{password => "*"}};
+                (_, Value) ->
+                     Value
+             end, Status).
 
 terminate(_Reason, _, #data{conn=undefined}) ->
     ok;
