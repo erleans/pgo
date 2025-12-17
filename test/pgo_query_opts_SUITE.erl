@@ -11,11 +11,11 @@ all() ->
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
 
-    {ok, _} = pgo_sup:start_child(default, #{database => "test",
-                                             user => "test",
-                                             password => "password",
-                                             pool_size => 1,
-                                             decode_opts => [return_rows_as_maps]}),
+    {ok, _} = pgo_sup:start_child(pgo_default, #{database => "test",
+                                                 user => "test",
+                                                 password => "password",
+                                                 pool_size => 1,
+                                                 decode_opts => [return_rows_as_maps]}),
 
     Config.
 
@@ -27,7 +27,7 @@ end_per_suite(_Config) ->
 
     application:stop(pgo),
 
-    pgo_test_utils:clear_types(default),
+    pgo_test_utils:clear_types(pgo_default),
 
     ok.
 
