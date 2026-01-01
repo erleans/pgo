@@ -5,7 +5,7 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
-all() -> [listen_notify, named_listen_notify].
+all() -> [listen_notify, named_listen_notify, listen_notify_special_name].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
@@ -116,6 +116,27 @@ named_listen_notify(_Config) ->
 
     ?assertMatch(#{command := notify},
                  pgo:query("NOTIFY chan1, 'message 1'")),
+
+    receive
+        {notification, Pid, Ref1, Chan1, Payload} ->
+            ?assertEqual(<<"message 1">>, Payload)
+    after
+        1000 ->
+            ct:fail(timeout)
+    end,
+
+    ok.
+
+listen_notify_special_name(_Config) ->
+    {ok, Pid} = pgo_notifications:start_link(#{database => "test",
+                                               user => "test",
+                                               password => "password"}),
+    Chan1 = <<"chan1:\"hello\"">>,
+
+    {_, Ref1} = pgo_notifications:listen(Pid, Chan1),
+
+    ?assertMatch(#{command := notify},
+                 pgo:query("NOTIFY \"chan1:\"\"hello\"\"\", 'message 1'")),
 
     receive
         {notification, Pid, Ref1, Chan1, Payload} ->
