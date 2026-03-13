@@ -18,6 +18,12 @@
 -define(DEFAULT_USER, "postgres").
 -define(DEFAULT_PASSWORD, "").
 
+resolve_password(Options) ->
+    case maps:get(password, Options, ?DEFAULT_PASSWORD) of
+        Fun when is_function(Fun, 0) -> Fun();
+        Password -> Password
+    end.
+
 % driver options.
 %% -type open_option() ::
 %%         {host, inet:ip_address() | inet:hostname()} % default: ?DEFAULT_HOST
@@ -210,7 +216,7 @@ setup_startup(Conn=#conn{socket_module=SocketModule,
     end.
 
 setup_authenticate_cleartext_password(Conn, Options) ->
-    Password = maps:get(password, Options, ?DEFAULT_PASSWORD),
+    Password = resolve_password(Options),
     setup_authenticate_password(Conn, Password).
 
 setup_authenticate_sasl_password(Conn, MethodsBinary, Options) ->
@@ -272,7 +278,7 @@ scram_client_final(Nonce, ServerFirst, #conn{socket_module=SocketModule,
                                              pool=Pool}, Options) ->
     User = maps:get(user, Options, ?DEFAULT_USER),
     ServerFirstParts = pgo_scram:parse_server_first(ServerFirst, Nonce),
-    Password = maps:get(password, Options, ?DEFAULT_PASSWORD),
+    Password = resolve_password(Options),
     {ClientFinalMessage, ServerProof} = pgo_scram:get_client_final(ServerFirstParts, Nonce, User, Password),
     case SocketModule:send(Socket, pgo_protocol:encode_scram_response_message(ClientFinalMessage)) of
         ok ->
@@ -283,7 +289,7 @@ scram_client_final(Nonce, ServerFirst, #conn{socket_module=SocketModule,
 
 setup_authenticate_md5_password(Conn, Salt, Options) ->
     User = maps:get(user, Options, ?DEFAULT_USER),
-    Password = maps:get(password, Options, ?DEFAULT_PASSWORD),
+    Password = resolve_password(Options),
     % concat('md5', md5(concat(md5(concat(password, username)), random-salt)))
     <<MD51Int:128>> = crypto:hash(md5, [Password, User]),
     MD51Hex = io_lib:format("~32.16.0b", [MD51Int]),

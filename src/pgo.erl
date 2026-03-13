@@ -60,7 +60,7 @@
 -type pool_config() :: #{host => string(),
                          port => integer(),
                          user => string(),
-                         password => string(),
+                         password => string() | fun(() -> iodata()),
                          database => string(),
 
                          %% pool specific settings

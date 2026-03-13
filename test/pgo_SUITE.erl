@@ -15,7 +15,8 @@
                        Until(I) -> case X of true -> ok; false -> timer:sleep(10), Until(I+1) end end)(0)).
 
 all() -> [checkout_checkin, checkout_break, recheckout, kill_socket, kill_pid,
-          checkout_kill, checkout_disconnect, checkout_query_crash].
+          checkout_kill, checkout_disconnect, checkout_query_crash,
+          password_as_function].
 
 init_per_suite(Config) ->
     Config.
@@ -23,6 +24,16 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
+init_per_testcase(password_as_function, Config) ->
+    Pool = pool_password_as_function,
+    application:ensure_all_started(pgo),
+    pgo_sup:start_child(Pool, #{pool_size => 1,
+                                database => ?DATABASE,
+                                user => ?USER,
+                                password => fun() -> ?PASSWORD end}),
+    Tid = pgo_pool:tid(Pool),
+    ?UNTIL((catch ets:info(Tid, size)) =:= 1),
+    [{pool_name, Pool} | Config];
 init_per_testcase(T, Config) when T =:= checkout_break ;
                                   T =:= checkout_query_crash ;
                                   T =:= recheckout ;
@@ -221,6 +232,11 @@ checkout_disconnect(Config) ->
     erlang:exit(Pid1, kill),
     ?UNTIL((catch ets:info(Tid, size)) =:= 10),
 
+    ok.
+
+password_as_function(Config) ->
+    Name = ?config(pool_name, Config),
+    ?assertMatch(#{rows := [{1}]}, pgo:query("select 1", [], #{pool => Name})),
     ok.
 
 %% regression test. this would fail with `unexpected message` response to the create query
