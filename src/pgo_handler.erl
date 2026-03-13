@@ -151,7 +151,8 @@ setup_ssl(Conn=#conn{socket=Socket}, Options) ->
             case gen_tcp:recv(Socket, 1) of
                 {ok, <<$S>>} ->
                     % upgrade socket.
-                    SSLOptions = maps:get(ssl_options, Options, []),
+                    UserSSLOptions = maps:get(ssl_options, Options, []),
+                    SSLOptions = default_ssl_options(Options, UserSSLOptions),
                     case ssl:connect(Socket, [binary, {packet, raw}, {active, false} | SSLOptions]) of
                         {ok, SSLSocket} ->
                             setup_startup(Conn#conn{socket=SSLSocket}, Options);
@@ -165,6 +166,23 @@ setup_ssl(Conn=#conn{socket=Socket}, Options) ->
         {error, _} = SendSSLRequestError ->
             SendSSLRequestError
     end.
+
+default_ssl_options(Options, UserSSLOptions) ->
+    Host = maps:get(host, Options, ?DEFAULT_HOST),
+    SNI = case is_list(Host) of
+              true -> Host;
+              false -> binary_to_list(iolist_to_binary([Host]))
+          end,
+    Defaults = [{verify, verify_peer},
+                {cacerts, public_key:cacerts_get()},
+                {server_name_indication, SNI},
+                {customize_hostname_check,
+                 [{match_fun, public_key:pkix_verify_hostname_match_fun(https)}]}],
+    merge_ssl_options(Defaults, UserSSLOptions).
+
+merge_ssl_options(Defaults, UserOptions) ->
+    UserKeys = proplists:get_keys(UserOptions),
+    [Opt || {Key, _} = Opt <- Defaults, not lists:member(Key, UserKeys)] ++ UserOptions.
 
 setup_startup(Conn=#conn{socket_module=SocketModule,
                          socket=Socket,
