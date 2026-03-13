@@ -156,6 +156,7 @@ setup_ssl(Conn=#conn{socket=Socket}, Options) ->
                         {ok, SSLSocket} ->
                             setup_startup(Conn#conn{socket=SSLSocket}, Options);
                         {error, _} = SSLConnectErr ->
+                            gen_tcp:close(Socket),
                             SSLConnectErr
                     end;
                 {ok, <<$N>>} ->
@@ -661,17 +662,20 @@ decode_tag(Tag) ->
     end.
 
 decode_verb(Verb) ->
-    VerbStr = binary_to_list(Verb),
-    VerbLC = string:to_lower(VerbStr),
-    list_to_atom(VerbLC).
+    VerbLC = string:lowercase(Verb),
+    try binary_to_existing_atom(VerbLC, utf8)
+    catch error:badarg -> VerbLC
+    end.
 
 decode_object(<<FirstByte, _/binary>> = Object) when FirstByte =< $9 andalso FirstByte >= $0 ->
     Words = binary:split(Object, <<" ">>, [global]),
     [list_to_integer(binary_to_list(Word)) || Word <- Words];
 decode_object(Object) ->
-    ObjectUStr = re:replace(Object, <<" ">>, <<"_">>, [global, {return, list}]),
-    ObjectULC = string:to_lower(ObjectUStr),
-    [list_to_atom(ObjectULC)].
+    ObjectU = binary:replace(Object, <<" ">>, <<"_">>, [global]),
+    ObjectULC = string:lowercase(ObjectU),
+    try [binary_to_existing_atom(ObjectULC, utf8)]
+    catch error:badarg -> [ObjectULC]
+    end.
 
 %% only for the type server
 

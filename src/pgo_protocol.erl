@@ -599,5 +599,5 @@ decode_value(#row_description_field{type_info=TypeInfo,
                                     data_type_oid=_DataTypeOID,
                                     format=binary}, Value, _OIDMap, _DecodeOptions) ->
     pg_types:decode(Value, TypeInfo);
-decode_value(#row_description_field{format = text}, _Value, _OIDMap, _DecodeOptions) ->
-    throw(no_text_format_support).
+decode_value(#row_description_field{format = text}, Value, _OIDMap, _DecodeOptions) ->
+    Value.
