@@ -22,5 +22,5 @@ init([QueueTid, SupPid, PoolPid, PoolName, PoolConfig]) ->
     ChildSpecs = [#{id => pgo_connection,
                     start => {pgo_connection, start_link, [QueueTid, PoolPid, PoolName,
                                                            SupPid, PoolConfig]},
-                    shutdown => 100}],
+                    shutdown => 5000}],
     {ok, {SupFlags, ChildSpecs}}.
