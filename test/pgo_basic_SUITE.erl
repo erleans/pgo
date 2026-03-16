@@ -15,7 +15,7 @@ all() ->
 
 groups() ->
     [{clear, [], cases()},
-     {ssl, [], [int4_range, exceptions]},
+     {ssl, [], [int4_range, exceptions, ssl_connect_failure_closes_socket]},
      {domain_socket, [], [int4_range]}].
 
 cases() ->
@@ -196,6 +196,26 @@ exceptions(_Config) ->
     {error, Reason} = pgo:query("select $1::interval", [none]),
     ?assertMatch("Error encoding type interval. Expected, {interval {{Hours::integer(), Minutes::integer(), Seconds::integer()}, Days::integer(), months::integer()}}. Got, none.", lists:flatten(pgo:format_error(Reason))),
 
+    ok.
+
+ssl_connect_failure_closes_socket(_Config) ->
+    %% Connect with invalid SSL options to force ssl:connect/3 to fail
+    %% after the server accepts the SSL request. Verify the TCP socket
+    %% is properly closed and not leaked.
+    TcpPortsBefore = [P || P <- erlang:ports(),
+                           erlang:port_info(P, name) =:= {name, "tcp_inet"}],
+    {error, _} = pgo_handler:open(default,
+                                  #{host => "127.0.0.1",
+                                    port => 5434,
+                                    user => "test",
+                                    password => "password",
+                                    database => "test",
+                                    ssl => true,
+                                    ssl_options => [{cacertfile, "/nonexistent/ca.pem"},
+                                                    {verify, verify_peer}]}),
+    TcpPortsAfter = [P || P <- erlang:ports(),
+                          erlang:port_info(P, name) =:= {name, "tcp_inet"}],
+    ?assertEqual(length(TcpPortsBefore), length(TcpPortsAfter)),
     ok.
 
 select(_Config) ->
