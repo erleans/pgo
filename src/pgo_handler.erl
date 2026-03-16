@@ -157,6 +157,7 @@ setup_ssl(Conn=#conn{socket=Socket}, Options) ->
                         {ok, SSLSocket} ->
                             setup_startup(Conn#conn{socket=SSLSocket}, Options);
                         {error, _} = SSLConnectErr ->
+                            gen_tcp:close(Socket),
                             SSLConnectErr
                     end;
                 {ok, <<$N>>} ->
