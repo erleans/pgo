@@ -17,10 +17,6 @@
 all() -> [checkout_checkin, checkout_break, recheckout, kill_socket, kill_pid,
           checkout_kill, checkout_disconnect, checkout_query_crash,
           password_as_function, query_timeout].
-          password_as_function, query_timeout].
-          password_as_function, query_timeout].
-          password_as_function, query_timeout].
-          password_as_function, query_timeout].
 
 init_per_suite(Config) ->
     Config.
