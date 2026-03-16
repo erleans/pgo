@@ -101,9 +101,16 @@ query(Query, Params, Options) ->
             Pool = maps:get(pool, Options, default),
             PoolOptions = maps:get(pool_options, Options, []),
             case checkout(Pool, PoolOptions) of
-                {ok, Ref, Conn} ->
+                {ok, Ref={_, _, _, Holder}, Conn} ->
                     try
                         query(Query, Params, Options, Conn)
+                    of
+                        {error, closed} ->
+                            maybe_timeout_error(Holder);
+                        {error, einval} ->
+                            maybe_timeout_error(Holder);
+                        Result ->
+                            Result
                     after
                         checkin(Ref, Conn)
                     end;
@@ -229,6 +236,12 @@ checkin(Ref, Conn) ->
 -spec break(pgo_pool:conn()) -> ok.
 break(Conn) ->
     pgo_connection:break(Conn).
+
+maybe_timeout_error(Holder) ->
+    case ets:info(Holder, size) of
+        undefined -> {error, query_timeout};
+        _ -> {error, closed}
+    end.
 
 format_error(Error=#{module := Module}) ->
     Module:format_error(Error);
