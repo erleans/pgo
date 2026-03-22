@@ -5,6 +5,9 @@
          extended_query/3,
          extended_query/4,
          extended_query/5,
+         prepare/3,
+         prepared_query/4,
+         prepared_query/5,
          ping/1,
          setopts/3,
          simple_query/2,
@@ -77,6 +80,108 @@ extended_query(Socket, Query, Parameters, Timings) when is_map(Timings) ->
 extended_query(Socket, Query, Parameters, DecodeOptions, _Timings) ->
     DecodeFun = proplists:get_value(decode_fun, DecodeOptions, undefined),
     extended_query(Socket, Query, Parameters, DecodeOptions, DecodeFun, []).
+
+%% @doc Parse a named prepared statement. Returns {ok, Name, ParameterOIDs}
+%% on success. The statement is cached server-side per connection.
+-spec prepare(#conn{}, iodata(), iodata()) -> {ok, iodata(), [pg_types:oid()]} | {error, term()}.
+prepare(Conn=#conn{socket=Socket,
+                   socket_module=SocketModule}, Name, Query) ->
+    _ = setopts(SocketModule, Socket, [{active, false}]),
+    ParseMessage = pgo_protocol:encode_parse_message(Name, Query, []),
+    DescribeMessage = pgo_protocol:encode_describe_message(statement, Name),
+    FlushMessage = pgo_protocol:encode_flush_message(),
+    SyncMessage = pgo_protocol:encode_sync_message(),
+    Packet = [ParseMessage, DescribeMessage, FlushMessage, SyncMessage],
+    Result = case SocketModule:send(Socket, Packet) of
+                 ok ->
+                     prepare_receive_loop(Name, Conn);
+                 {error, _} = SendError ->
+                     SendError
+             end,
+    _ = setopts(SocketModule, Socket, [{active, once}]),
+    Result.
+
+prepare_receive_loop(Name, Conn=#conn{socket=Socket, socket_module=SocketModule}) ->
+    case receive_message(SocketModule, Socket, Conn, []) of
+        {ok, #parse_complete{}} ->
+            prepare_receive_loop_describe(Name, Conn);
+        {ok, #error_response{fields = Fields}} ->
+            flush_until_ready_for_query({error, {pgsql_error, Fields}}, Conn);
+        {error, _} = Error ->
+            Error
+    end.
+
+prepare_receive_loop_describe(Name, Conn=#conn{socket=Socket, socket_module=SocketModule}) ->
+    case receive_message(SocketModule, Socket, Conn, []) of
+        {ok, #parameter_description{data_types=DataTypes}} ->
+            prepare_skip_to_ready(Name, DataTypes, Conn);
+        {ok, #error_response{fields = Fields}} ->
+            flush_until_ready_for_query({error, {pgsql_error, Fields}}, Conn);
+        {error, _} = Error ->
+            Error
+    end.
+
+prepare_skip_to_ready(Name, DataTypes, Conn=#conn{socket=Socket, socket_module=SocketModule}) ->
+    case receive_message(SocketModule, Socket, Conn, []) of
+        {ok, #ready_for_query{}} ->
+            {ok, Name, DataTypes};
+        {ok, #error_response{fields = Fields}} ->
+            flush_until_ready_for_query({error, {pgsql_error, Fields}}, Conn);
+        {ok, #parameter_description{data_types = DTs}} ->
+            prepare_skip_to_ready(Name, DTs, Conn);
+        {ok, _} ->
+            prepare_skip_to_ready(Name, DataTypes, Conn);
+        {error, _} = Error ->
+            Error
+    end.
+
+%% @doc Execute a previously prepared named statement. Skips PARSE entirely —
+%% only sends BIND, DESCRIBE portal, EXECUTE, SYNC. The statement must have
+%% been prepared on this connection via prepare/3 first.
+-spec prepared_query(#conn{}, iodata(), list(), [pg_types:oid()]) -> pgo:result().
+prepared_query(Conn, Name, Parameters, ParameterDataTypes) ->
+    prepared_query(Conn, Name, Parameters, ParameterDataTypes, []).
+
+-spec prepared_query(#conn{}, iodata(), list(), [pg_types:oid()], pgo:decode_opts()) -> pgo:result().
+prepared_query(Conn=#conn{socket=Socket,
+                          socket_module=SocketModule},
+               Name, Parameters, ParameterDataTypes, DecodeOptions) ->
+    _ = setopts(SocketModule, Socket, [{active, false}]),
+    DecodeFun = proplists:get_value(decode_fun, DecodeOptions, undefined),
+    Result = case encode_bind_describe_execute_named(Conn, Name, Parameters, ParameterDataTypes) of
+                 {ok, SinglePacket} ->
+                     case SocketModule:send(Socket, SinglePacket) of
+                         ok ->
+                             try
+                                 receive_loop(bind_complete, DecodeFun, [], DecodeOptions, Conn)
+                             catch
+                                 Class:Reason:Stacktrace ->
+                                     flush_until_ready_for_query(error, Conn),
+                                     erlang:raise(Class, Reason, Stacktrace)
+                             end;
+                         {error, _} = SendError ->
+                             SendError
+                     end;
+                 {_, _} = Error ->
+                     Error
+             end,
+    _ = setopts(SocketModule, Socket, [{active, once}]),
+    Result.
+
+-spec encode_bind_describe_execute_named(pgo_pool:conn(), iodata(), [any()], [pg_types:oid()]) ->
+    {ok, iodata()} | {term(), any()}.
+encode_bind_describe_execute_named(Conn, StatementName, Parameters, ParameterDataTypes) ->
+    DescribeMessage = pgo_protocol:encode_describe_message(portal, ""),
+    ExecuteMessage = pgo_protocol:encode_execute_message("", 0),
+    SyncMessage = pgo_protocol:encode_sync_message(),
+    try
+        BindMessage = pgo_protocol:encode_bind_message(Conn, "", StatementName, Parameters, ParameterDataTypes),
+        SinglePacket = [BindMessage, DescribeMessage, ExecuteMessage, SyncMessage],
+        {ok, SinglePacket}
+    catch
+        Class:Exception ->
+            {Class, Exception}
+    end.
 
 -spec ping(#conn{}) -> ok | {error, term()}.
 ping(Conn=#conn{socket=Socket,
