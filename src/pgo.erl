@@ -188,12 +188,15 @@ query_prepared(Name, Params, ParameterOIDs) ->
 
 -spec query_prepared(iodata(), list(), [pg_types:oid()], options()) -> result().
 query_prepared(Name, Params, ParameterOIDs, Options) ->
+    pgo_prepared_cache:init(),
     Pool = maps:get(pool, Options, default),
     PoolOptions = maps:get(pool_options, Options, []),
     DecodeOptions = maps:get(decode_opts, Options, []),
     case checkout(Pool, PoolOptions) of
-        {ok, Ref={_, _, _, Holder}, Conn=#conn{decode_opts=DefaultDecodeOpts}} ->
+        {ok, Ref={_, _, _, Holder}, Conn=#conn{owner=Owner, decode_opts=DefaultDecodeOpts}} ->
             try
+                NameBin = iolist_to_binary(Name),
+                _ = maybe_prepare_on_conn(Owner, NameBin, Conn),
                 pgo_handler:prepared_query(Conn, Name, Params, ParameterOIDs,
                                            DecodeOptions ++ DefaultDecodeOpts)
             of
@@ -208,6 +211,28 @@ query_prepared(Name, Params, ParameterOIDs, Options) ->
             end;
         {error, _} = E ->
             E
+    end.
+
+maybe_prepare_on_conn(Owner, NameBin, Conn) ->
+    Key = {Owner, NameBin},
+    case pgo_prepared_cache:is_conn_prepared(Key) of
+        true ->
+            ok;
+        false ->
+            case pgo_prepared_cache:lookup(NameBin) of
+                {ok, Query, _OIDs} ->
+                    case pgo_handler:prepare(Conn, NameBin, Query) of
+                        {ok, _, _} ->
+                            pgo_prepared_cache:mark_conn_prepared(Key);
+                        {error, {pgsql_error, #{code := <<"42P05">>}}} ->
+                            %% Already prepared (e.g. from a previous session)
+                            pgo_prepared_cache:mark_conn_prepared(Key);
+                        Error ->
+                            Error
+                    end;
+                not_found ->
+                    ok
+            end
     end.
 
 %% @equiv transaction(default, Fun, [])

@@ -18,7 +18,8 @@ all() ->
      prepared_query_not_prepared,
      prepare_cache_stores_metadata,
      prepared_query_rows_as_maps,
-     with_conn_prepare_and_query].
+     with_conn_prepare_and_query,
+     auto_prepare_across_pool].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
@@ -137,3 +138,36 @@ with_conn_prepare_and_query(_Config) ->
         pgo:query_prepared("wc_test", [2], OIDs)
     end),
     ?assertMatch(#{command := select, rows := [{<<"bob">>}]}, Result).
+
+auto_prepare_across_pool(_Config) ->
+    %% Start a pool with multiple connections
+    {ok, _} = pgo_sup:start_child(multi_pool, #{pool_size => 5,
+                                                 port => 5432,
+                                                 database => "test",
+                                                 user => "test",
+                                                 password => "password"}),
+    %% Prepare on one connection
+    {ok, _, OIDs} = pgo:prepare("auto_prep_test",
+                                "SELECT name FROM prepared_test WHERE id = $1",
+                                #{pool => multi_pool}),
+    %% Execute many times — will hit different connections, auto-prepare should kick in
+    Results = [pgo:query_prepared("auto_prep_test", [I], OIDs, #{pool => multi_pool})
+               || I <- lists:seq(1, 20)],
+    %% All should succeed (no "statement not found" errors)
+    lists:foreach(
+        fun(R) -> ?assertMatch(#{command := select}, R) end,
+        Results
+    ),
+    %% Verify correct data comes back
+    ?assertMatch(#{rows := [{<<"alice">>}]},
+                 pgo:query_prepared("auto_prep_test", [1], OIDs, #{pool => multi_pool})),
+    ?assertMatch(#{rows := [{<<"bob">>}]},
+                 pgo:query_prepared("auto_prep_test", [2], OIDs, #{pool => multi_pool})),
+    application:stop(pgo),
+    application:ensure_all_started(pgo),
+    {ok, _} = pgo_sup:start_child(default, #{pool_size => 1,
+                                             port => 5432,
+                                             database => "test",
+                                             user => "test",
+                                             password => "password"}),
+    ok.
