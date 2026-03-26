@@ -14,6 +14,10 @@
          query/2,
          query/3,
          query/4,
+         prepare/2,
+         prepare/3,
+         query_prepared/3,
+         query_prepared/4,
          transaction/1,
          transaction/2,
          transaction/3,
@@ -151,6 +155,89 @@ query(Query, Params, Options, Conn=#conn{trace=TraceDefault,
                                                   DecodeOptions ++ DefaultDecodeOpts,
                                                   #{queue_time => undefined})
                end).
+
+%% @doc Prepare a named statement on the given pool.
+%% Returns {ok, Name, ParameterOIDs} which can be passed to query_prepared/3,4.
+-spec prepare(iodata(), iodata()) -> {ok, iodata(), [pg_types:oid()]} | {error, term()}.
+prepare(Name, Query) ->
+    prepare(Name, Query, #{}).
+
+-spec prepare(iodata(), iodata(), options()) -> {ok, iodata(), [pg_types:oid()]} | {error, term()}.
+prepare(Name, Query, Options) ->
+    pgo_prepared_cache:init(),
+    Pool = maps:get(pool, Options, default),
+    PoolOptions = maps:get(pool_options, Options, []),
+    case checkout(Pool, PoolOptions) of
+        {ok, Ref, Conn} ->
+            try
+                case pgo_handler:prepare(Conn, Name, Query) of
+                    {ok, N, OIDs} = Result ->
+                        pgo_prepared_cache:store(N, Query, OIDs),
+                        Result;
+                    Error ->
+                        Error
+                end
+            after
+                checkin(Ref, Conn)
+            end;
+        {error, _} = E ->
+            E
+    end.
+
+%% @doc Execute a previously prepared named statement.
+%% ParameterOIDs is the list returned by prepare/2,3.
+-spec query_prepared(iodata(), list(), [pg_types:oid()]) -> result().
+query_prepared(Name, Params, ParameterOIDs) ->
+    query_prepared(Name, Params, ParameterOIDs, #{}).
+
+-spec query_prepared(iodata(), list(), [pg_types:oid()], options()) -> result().
+query_prepared(Name, Params, ParameterOIDs, Options) ->
+    pgo_prepared_cache:init(),
+    Pool = maps:get(pool, Options, default),
+    PoolOptions = maps:get(pool_options, Options, []),
+    DecodeOptions = maps:get(decode_opts, Options, []),
+    case checkout(Pool, PoolOptions) of
+        {ok, Ref={_, _, _, Holder}, Conn=#conn{owner=Owner, decode_opts=DefaultDecodeOpts}} ->
+            try
+                NameBin = iolist_to_binary(Name),
+                _ = maybe_prepare_on_conn(Owner, NameBin, Conn),
+                pgo_handler:prepared_query(Conn, Name, Params, ParameterOIDs,
+                                           DecodeOptions ++ DefaultDecodeOpts)
+            of
+                {error, closed} ->
+                    maybe_timeout_error(Holder);
+                {error, einval} ->
+                    maybe_timeout_error(Holder);
+                Result ->
+                    Result
+            after
+                checkin(Ref, Conn)
+            end;
+        {error, _} = E ->
+            E
+    end.
+
+maybe_prepare_on_conn(Owner, NameBin, Conn) ->
+    Key = {Owner, NameBin},
+    case pgo_prepared_cache:is_conn_prepared(Key) of
+        true ->
+            ok;
+        false ->
+            case pgo_prepared_cache:lookup(NameBin) of
+                {ok, Query, _OIDs} ->
+                    case pgo_handler:prepare(Conn, NameBin, Query) of
+                        {ok, _, _} ->
+                            pgo_prepared_cache:mark_conn_prepared(Key);
+                        {error, {pgsql_error, #{code := <<"42P05">>}}} ->
+                            %% Already prepared (e.g. from a previous session)
+                            pgo_prepared_cache:mark_conn_prepared(Key);
+                        Error ->
+                            Error
+                    end;
+                not_found ->
+                    ok
+            end
+    end.
 
 %% @equiv transaction(default, Fun, [])
 -spec transaction(fun(() -> any())) -> any() | {error, any()}.
