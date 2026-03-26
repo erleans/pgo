@@ -29,12 +29,16 @@
 
 -export_type([result/0,
               error/0,
+              pool/0,
+              row/0,
+              options/0,
               pool_config/0,
-              decode_fun/0]).
+              decode_fun/0,
+              decode_option/0]).
 
 -type result() :: #{command := atom(),
-                    num_rows := integer() | table,
-                    rows := list()} | {error, error()} | {error, any()}.
+                    num_rows := non_neg_integer() | table,
+                    rows := [row()]} | {error, error()} | {error, any()}.
 
 -type error() :: {pgo_error, #{error_field() => binary()}} | pg_types:encoding_error().
 
@@ -219,16 +223,16 @@ with_conn(Conn, Fun) ->
     end.
 
 %% @doc Returns a connection from the pool.
--spec checkout(atom()) -> {ok, pgo_pool:pool_ref(), pgo_pool:conn()} | {error, any()}.
+-spec checkout(atom()) -> {ok, pgo_pool:ref(), pgo_pool:conn()} | {error, any()}.
 checkout(Pool) ->
     pgo_pool:checkout(Pool, []).
 
--spec checkout(atom(), [pool_option()]) -> {ok, pgo_pool:pool_ref(), pgo_pool:conn()} | {error, any()}.
+-spec checkout(atom(), [pool_option()]) -> {ok, pgo_pool:ref(), pgo_pool:conn()} | {error, any()}.
 checkout(Pool, Options) ->
     pgo_pool:checkout(Pool, Options).
 
 %% @doc Return a checked out connection to its pool
--spec checkin(pgo_pool:pool_ref(), pgo_pool:conn()) -> ok.
+-spec checkin(pgo_pool:ref(), pgo_pool:conn()) -> ok.
 checkin(Ref, Conn) ->
     pgo_pool:checkin(Ref, Conn, []).
 
