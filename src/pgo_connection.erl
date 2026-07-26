@@ -21,6 +21,10 @@
          format_status/1,
          terminate/3]).
 
+-ifdef(TEST).
+-export([handle_event/3]).
+-endif.
+
 -include("pgo_internal.hrl").
 -include_lib("kernel/include/logger.hrl").
 
@@ -184,6 +188,9 @@ handle_event(info, {'EXIT', Socket, _Reason}, Data=#data{conn=#conn{socket=Socke
     close_and_reopen(Data);
 %% ignore `EXIT' for a different Socket -- means it is an old message
 handle_event(info, {'EXIT', _, _Reason}, _Data) ->
+    keep_state_and_data;
+%% nothing to do for `tcp_closed' -- it should be handled by the `EXIT' handling
+handle_event(info, {tcp_closed, _}, _Data) ->
     keep_state_and_data;
 %% nothing to do for `ssl_closed' -- it should be handled by the `EXIT' handling
 handle_event(info, {ssl_closed, _}, _Data) ->
