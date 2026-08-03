@@ -573,7 +573,7 @@ decode_strings(Binary) ->
 %%--------------------------------------------------------------------
 %% @doc Decode a row format.
 %%
--spec decode_row([#row_description_field{}], [binary()], atom(), proplists:proplist()) -> tuple().
+-spec decode_row([#row_description_field{}], [binary()], atom(), proplists:proplist()) -> pgo:row().
 decode_row(Descs, Values, OIDMap, DecodeOptions) ->
     case proplists:get_bool(return_rows_as_maps, DecodeOptions) of
         false ->
