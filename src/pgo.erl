@@ -44,7 +44,7 @@
 
 -type pool() :: atom().
 
--type row() :: list() | map().
+-type row() :: tuple() | map().
 -type fields() :: [#row_description_field{}].
 -type decode_fun() :: fun((row(), fields()) -> row()) | undefined.
 
