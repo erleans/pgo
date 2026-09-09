@@ -184,23 +184,28 @@ new_transaction(Pool, Fun, Options) ->
                        #{is_recording => if DoTrace -> true; true -> false end,
                          attributes => TraceAttributes},
                        fun(_) ->
-                               try
-                                   #{command := 'begin'} = pgo_handler:extended_query(Conn, "BEGIN", [],
-                                                                                      #{queue_time => undefined}),
-                                   put(pgo_transaction_connection, Conn),
-                                   Result = Fun(),
-                                   case pgo_handler:extended_query(Conn, "COMMIT", [],
-                                                                   #{queue_time => undefined}) of
-                                       #{command := commit} -> Result;
-                                       #{command := rollback} -> Result
-                                   end
-                               catch
-                                   Type:Reason:Stacktrace ->
-                                       pgo_handler:extended_query(Conn, "ROLLBACK", [], #{queue_time => undefined}),
-                                       erlang:raise(Type, Reason, Stacktrace)
-                               after
-                                   checkin(Ref, Conn),
-                                   erase(pgo_transaction_connection)
+                               Outcome =
+                                   try
+                                       #{command := 'begin'} = pgo_handler:extended_query(Conn, "BEGIN", [],
+                                                                                          #{queue_time => undefined}),
+                                       put(pgo_transaction_connection, Conn),
+                                       Result = Fun(),
+                                       case pgo_handler:extended_query(Conn, "COMMIT", [],
+                                                                       #{queue_time => undefined}) of
+                                           #{command := commit} -> {committed, Result};
+                                           #{command := rollback} -> rolled_back
+                                       end
+                                   catch
+                                       Type:Reason:Stacktrace ->
+                                           pgo_handler:extended_query(Conn, "ROLLBACK", [], #{queue_time => undefined}),
+                                           erlang:raise(Type, Reason, Stacktrace)
+                                   after
+                                       checkin(Ref, Conn),
+                                       erase(pgo_transaction_connection)
+                                   end,
+                               case Outcome of
+                                   {committed, R} -> R;
+                                   rolled_back -> erlang:error(transaction_rolled_back)
                                end
                        end);
         {error, _}=E ->

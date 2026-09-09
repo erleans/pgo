@@ -19,7 +19,8 @@ groups() ->
      {domain_socket, [], [int4_range]}].
 
 cases() ->
-    [exceptions, select, insert_update, text_types,
+    [transaction_returns_value, transaction_aborted_raises,
+     exceptions, select, insert_update, text_types,
      rows_as_maps, json_jsonb, types,
      int4_range, ts_range, tstz_range, numerics,
      hstore, records, circle, path, polygon, line,
@@ -488,4 +489,22 @@ netmask(_Config) ->
     ?assertMatch(#{rows := [{{{192,168,0,1},24}}]},
                  pgo:query("SELECT '192.168.0.1/24'::inet")),
 
+    ok.
+
+transaction_returns_value(_Config) ->
+    ?assertEqual(42, pgo:transaction(fun() -> 42 end)),
+    ?assertEqual(ok, pgo:transaction(fun() ->
+                                         ?assertMatch(#{rows := [{1}]}, pgo:query("select 1::int")),
+                                         ok
+                                     end)),
+    ok.
+
+transaction_aborted_raises(_Config) ->
+    ?assertError(transaction_rolled_back,
+                 pgo:transaction(fun() ->
+                                     {error, _} = pgo:query("select 1/0"),
+                                     ok
+                                 end)),
+
+    ?assertMatch(#{rows := [{1}]}, pgo:query("select 1::int")),
     ok.
