@@ -15,6 +15,14 @@
 -type pgsql_format() :: text | binary.
 -type pgsql_oid_map() :: gb_trees:tree(oid(), atom()).
 
+% Credit https://github.com/semiocast/pgsql/blob/c7d98673459052b2c48526f16dab11ab34c23891/src/pgsql_error.erl#L16-L22
+-type pgsql_error_and_mention_field_type() ::
+    severity | code | message | detail | hint | position | internal_position
+    | internal_query | where | file | line | routine
+    | schema | table | column | data_type | constraint | {unknown, byte()}.
+-type pgsql_error_and_mention_field() ::
+    {pgsql_error_and_mention_field_type(), binary()}.
+
 -define(JSONB_VERSION_1, 1).
 
 % from pg_type.h
@@ -282,14 +290,14 @@
 }).
 -record(empty_query_response, {}).
 -record(error_response, {
-    fields :: [pgsql_error:pgsql_error_and_mention_field()] | #{error_field() => binary()}
+    fields :: [pgsql_error_and_mention_field()] | #{error_field() => binary()}
 }).
 -record(function_call_response, {
     value :: null | iodata()
 }).
 -record(no_data, {}).
 -record(notice_response, {
-    fields :: [pgsql_error:pgsql_error_and_mention_field()] | #{error_field() => binary()}
+    fields :: [pgsql_error_and_mention_field()] | #{error_field() => binary()}
 }).
 -record(notification_response, {
     procid :: pgsql_procid(),
