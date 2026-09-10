@@ -26,10 +26,10 @@ To try `pgo` simply modify `config/example.config` by replacing the `host`, `dat
 
 ```erlang
 [
-  {pgo, [{pools, [{default, #{pool_size => 10,
-                              host => "127.0.0.1",
-                              database => "test",
-                              user => "test"}}]}]}
+  {pgo, [{pools, [{pgo_default, #{pool_size => 10,
+                                  host => "127.0.0.1",
+                                  database => "test",
+                                  user => "test"}}]}]}
 ].
 ```
 
@@ -38,7 +38,7 @@ To try `pgo` simply modify `config/example.config` by replacing the `host`, `dat
 ``` erlang
 > application:ensure_all_started(pgo).
 {ok,[backoff,opentelemetry_api,pg_types,pgo]}
-> pgo:start_pool(default, #{pool_size => 5, host => "127.0.0.1", database => "test", user => "test"}). 
+> pgo:start_pool(pgo_default, #{pool_size => 5, host => "127.0.0.1", database => "test", user => "test"}). 
 ```
 
 Or start a pool as a child of your application's supervisor:
@@ -104,7 +104,7 @@ decode_option() :: return_rows_as_maps | {return_rows_as_maps, boolean()} |
 
 ### Query Options
 
-* `pool` (default: `default`): Name of the pool to use for checking out a connection to the database.
+* `pool` (default: `pgo_default`): Name of the pool to use for checking out a connection to the database.
 * `return_rows_as_maps` (default: `false`): When `true` each row is returned as a map of column name to value instead of a list of values.
 * `column_name_as_atom` (default: `false`): If `true` converts each column name in the result to an atom.
 * `decode_fun` (default: `undefined`): Optional function for performing transformations on each row in a result. It must be a 2-arity function returning a list or map for the row and takes the row (as a list or map) and a list of `#row_description_field{}` records.
