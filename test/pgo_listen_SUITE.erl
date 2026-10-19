@@ -5,7 +5,7 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
-all() -> [listen_notify, named_listen_notify, listen_notify_special_name].
+all() -> [listen_notify, named_listen_notify, listen_notify_special_name, listen_notify_ssl].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
@@ -146,4 +146,36 @@ listen_notify_special_name(_Config) ->
             ct:fail(timeout)
     end,
 
+    ok.
+
+%% Over SSL the socket must be re-armed with ssl:setopts, or the connection
+%% crashes after the first notification and later ones are lost while it
+%% reconnects.
+listen_notify_ssl(_Config) ->
+    SslConfig = #{port => 5434,
+                  ssl => true,
+                  ssl_options => [{verify, verify_none}],
+                  database => "test",
+                  user => "test",
+                  password => "password"},
+    {ok, _} = pgo_sup:start_child(listen_ssl_pool, SslConfig#{pool_size => 1}),
+    {ok, Pid} = pgo_notifications:start_link(SslConfig),
+    Chan = <<"chan_ssl">>,
+    {_, Ref} = pgo_notifications:listen(Pid, Chan),
+
+    lists:foreach(fun(N) ->
+                          Message = integer_to_binary(N),
+                          ?assertMatch(#{command := notify},
+                                       pgo:query(iolist_to_binary(["NOTIFY chan_ssl, '", Message, "'"]),
+                                                 [], #{pool => listen_ssl_pool})),
+                          receive
+                              {notification, Pid, Ref, Chan, Payload} ->
+                                  ?assertEqual(Message, Payload)
+                          after
+                              1000 ->
+                                  ct:fail({timeout, N})
+                          end
+                  end, [1, 2, 3]),
+
+    ?assert(is_process_alive(Pid)),
     ok.

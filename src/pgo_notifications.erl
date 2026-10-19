@@ -156,7 +156,7 @@ handle_event(info, {Tag, Socket, Binary}, Data=#data{conn=Conn=#conn{socket=Sock
     Conn = pgo_handler:process_active_data(Binary, Conn, fun(Notification) ->
                                                                  notify(ListenerChannels, Notification)
                                                          end),
-    _ = inet:setopts(Socket, [{active, once}]),
+    _ = pgo_handler:setopts(Conn#conn.socket_module, Socket, [{active, once}]),
     {keep_state, Data#data{conn=Conn}};
 handle_event(info, {Tag, _, _Binary}, _Data) when Tag =:= tcp orelse Tag =:= ssl ->
     %% ignore message from an old socket
