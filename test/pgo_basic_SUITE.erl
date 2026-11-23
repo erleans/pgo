@@ -15,7 +15,8 @@ all() ->
 
 groups() ->
     [{clear, [], cases()},
-     {ssl, [], [int4_range, exceptions, ssl_connect_failure_closes_socket]},
+     {ssl, [], [int4_range, exceptions, ssl_connect_failure_closes_socket,
+                 ssl_listen_notify]},
      {domain_socket, [], [int4_range]}].
 
 cases() ->
@@ -217,6 +218,45 @@ ssl_connect_failure_closes_socket(_Config) ->
     TcpPortsAfter = [P || P <- erlang:ports(),
                           erlang:port_info(P, name) =:= {name, "tcp_inet"}],
     ?assertEqual(length(TcpPortsBefore), length(TcpPortsAfter)),
+    ok.
+
+ssl_listen_notify(_Config) ->
+    %% A notifications connection over SSL must keep listening after a
+    %% notification arrives, so a second one reaches the listener too.
+    {ok, Pid} = pgo_notifications:start_link(#{host => "127.0.0.1",
+                                               port => 5434,
+                                               user => "test",
+                                               password => "password",
+                                               database => "test",
+                                               ssl => true,
+                                               ssl_options => [{verify, verify_none}]}),
+    unlink(Pid),
+    Monitor = erlang:monitor(process, Pid),
+    Chan = <<"ssl_chan">>,
+    {_, Ref} = pgo_notifications:listen(Pid, Chan),
+
+    ?assertMatch(#{command := notify}, pgo:query("NOTIFY ssl_chan, 'first'")),
+    receive
+        {notification, Pid, Ref, Chan, First} ->
+            ?assertEqual(<<"first">>, First)
+    after
+        1000 ->
+            ct:fail(timeout)
+    end,
+
+    ?assertMatch(#{command := notify}, pgo:query("NOTIFY ssl_chan, 'second'")),
+    receive
+        {notification, Pid, Ref, Chan, Second} ->
+            ?assertEqual(<<"second">>, Second);
+        {'DOWN', Monitor, process, Pid, Reason} ->
+            ct:fail({notifications_down, Reason})
+    after
+        1000 ->
+            ct:fail(timeout)
+    end,
+
+    erlang:demonitor(Monitor, [flush]),
+    gen_statem:stop(Pid),
     ok.
 
 select(_Config) ->
