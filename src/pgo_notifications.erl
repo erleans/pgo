@@ -151,12 +151,13 @@ handle_event(info, {'DOWN', Ref, process, _, _}, Data=#data{conn=Conn,
     {Listeners1, ListenerChannels1} = unlisten(Ref, Listeners, ListenerChannels, Conn),
     {keep_state, Data#data{listeners=Listeners1,
                            listener_channels=ListenerChannels1}};
-handle_event(info, {Tag, Socket, Binary}, Data=#data{conn=Conn=#conn{socket=Socket},
+handle_event(info, {Tag, Socket, Binary}, Data=#data{conn=Conn=#conn{socket=Socket,
+                                                                     socket_module=SocketModule},
                                                      listener_channels=ListenerChannels}) when Tag =:= tcp orelse Tag =:= ssl ->
     Conn = pgo_handler:process_active_data(Binary, Conn, fun(Notification) ->
                                                                  notify(ListenerChannels, Notification)
                                                          end),
-    _ = inet:setopts(Socket, [{active, once}]),
+    _ = pgo_handler:setopts(SocketModule, Socket, [{active, once}]),
     {keep_state, Data#data{conn=Conn}};
 handle_event(info, {Tag, _, _Binary}, _Data) when Tag =:= tcp orelse Tag =:= ssl ->
     %% ignore message from an old socket
